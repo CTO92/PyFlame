@@ -30,6 +30,11 @@ struct CodeGenOptions {
     bool emit_comments = true;
     int fabric_width = 0;   // 0 = auto
     int fabric_height = 0;  // 0 = auto
+
+    // Runtime configuration
+    // For on-premises: "localhost:9000" or IP of your CS-2/CS-3
+    // For Cerebras Cloud: Use the endpoint provided by your cloud instance
+    std::string runtime_address = "";  // Empty = use environment variable or default
 };
 
 /// CSL Code Generator

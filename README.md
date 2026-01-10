@@ -48,13 +48,24 @@ PyFlame includes a **CPU reference implementation** that allows you to develop, 
 To actually **execute on Cerebras WSE hardware**, you need:
 
 - **Cerebras SDK** - This is proprietary software available only to Cerebras customers and partners. It is not publicly downloadable.
-- **Access to Cerebras hardware** - Either on-premises CS-2/CS-3 systems or Cerebras cloud.
+- **Access to Cerebras hardware** - Either on-premises CS-2/CS-3 systems or Cerebras Cloud.
+
+**Supported deployment options:**
+| Environment | Runtime Address | Notes |
+|-------------|-----------------|-------|
+| On-premises CS-2/CS-3 | `localhost:9000` or system IP | Direct hardware access |
+| Cerebras Cloud | Cloud endpoint URL | Provided by your cloud instance |
 
 If you are interested in running PyFlame on Cerebras hardware, please contact [Cerebras Systems](https://www.cerebras.net/contact/) to inquire about SDK access and hardware availability.
 
 To build with Cerebras SDK support (once you have access):
 ```bash
 cmake .. -DPYFLAME_USE_CEREBRAS_SDK=ON -DCEREBRAS_SDK_PATH=/path/to/sdk
+```
+
+To configure the runtime endpoint (for cloud or remote on-premises):
+```bash
+export CEREBRAS_RUNTIME_ADDRESS="your-endpoint:port"
 ```
 
 ## Building

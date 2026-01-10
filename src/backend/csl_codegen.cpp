@@ -402,8 +402,18 @@ struct CSLCodeGenerator::Impl {
         ss << "FABRIC_HEIGHT = " << (options.fabric_height > 0 ? options.fabric_height : 1) << "\n\n";
 
         ss << "def main():\n";
+        ss << "    import os\n\n";
+        ss << "    # Runtime address configuration:\n";
+        ss << "    # - On-premises: 'localhost:9000' or your CS-2/CS-3 IP address\n";
+        ss << "    # - Cerebras Cloud: Use the endpoint URL from your cloud instance\n";
+        ss << "    # Set CEREBRAS_RUNTIME_ADDRESS environment variable or modify below\n";
+        if (options.runtime_address.empty()) {
+            ss << "    cmaddr = os.environ.get('CEREBRAS_RUNTIME_ADDRESS', 'localhost:9000')\n\n";
+        } else {
+            ss << "    cmaddr = '" << options.runtime_address << "'\n\n";
+        }
         ss << "    # Initialize runtime\n";
-        ss << "    runner = SdkRuntime(ELF_PATH, cmaddr='localhost:9000')\n\n";
+        ss << "    runner = SdkRuntime(ELF_PATH, cmaddr=cmaddr)\n\n";
 
         ss << "    # Load and run\n";
         ss << "    runner.load()\n";
