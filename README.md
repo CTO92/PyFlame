@@ -229,6 +229,7 @@ Internal architecture documentation:
 - [Lazy Evaluation & Graph Building](docs/02_lazy_evaluation_graph_building.md)
 - [Memory Management & Layouts](docs/03_memory_management_layout.md)
 - [Build System Setup](docs/04_build_system.md)
+- [Phase 2: ML Primitives Plan](docs/05_phase2_ml_primitives.md)
 
 ## API Reference
 
