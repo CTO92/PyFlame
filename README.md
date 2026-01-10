@@ -211,7 +211,19 @@ pyflame/
 
 ## Documentation
 
-Design documents are available in the [docs/](docs/) directory:
+### Developer Guides
+
+New to PyFlame? Start here:
+
+- [Getting Started](docs/getting_started.md) - Installation and first steps
+- [Integration Guide](docs/integration_guide.md) - Adding PyFlame to your project
+- [API Reference](docs/api_reference.md) - Complete function documentation
+- [Examples](docs/examples.md) - Practical code examples
+- [Best Practices](docs/best_practices.md) - Optimization tips and patterns
+
+### Design Documents
+
+Internal architecture documentation:
 
 - [CSL Code Generation Strategy](docs/01_csl_code_generation.md)
 - [Lazy Evaluation & Graph Building](docs/02_lazy_evaluation_graph_building.md)
