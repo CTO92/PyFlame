@@ -48,6 +48,34 @@ enum class OpType : uint16_t {
     TRANSPOSE = 501,
     BATCH_MATMUL = 502,
 
+    // Convolution operations (Phase 2)
+    CONV1D = 510,
+    CONV2D = 511,
+    CONV3D = 512,
+    CONV_TRANSPOSE2D = 513,
+
+    // Pooling operations (Phase 2)
+    MAX_POOL1D = 520,
+    MAX_POOL2D = 521,
+    MAX_POOL3D = 522,
+    AVG_POOL1D = 523,
+    AVG_POOL2D = 524,
+    AVG_POOL3D = 525,
+    ADAPTIVE_AVG_POOL2D = 526,
+
+    // Normalization operations (Phase 2)
+    BATCH_NORM = 530,
+    LAYER_NORM = 531,
+    GROUP_NORM = 532,
+    INSTANCE_NORM = 533,
+
+    // Dropout (Phase 2)
+    DROPOUT = 540,
+
+    // Embedding (Phase 2)
+    EMBEDDING = 545,
+    GATHER = 546,
+
     // Shape operations
     RESHAPE = 600,
     VIEW = 601,
@@ -70,6 +98,23 @@ enum class OpType : uint16_t {
     LE = 803,
     GT = 804,
     GE = 805,
+    LESS = 806,        // Same as LT, for clarity
+
+    // Conditional operations
+    WHERE = 810,       // Ternary selection
+    MAXIMUM = 811,     // Element-wise maximum
+    MINIMUM = 812,     // Element-wise minimum
+    CLAMP = 813,       // Clamp values to range
+
+    // Loss function operations (Phase 2)
+    NLL_LOSS = 850,
+    CROSS_ENTROPY_LOSS = 851,
+    MSE_LOSS = 852,
+    L1_LOSS = 853,
+    BCE_LOSS = 854,
+    BCE_WITH_LOGITS_LOSS = 855,
+    KL_DIV_LOSS = 856,
+    SMOOTH_L1_LOSS = 857,
 
     // Special
     CONSTANT = 900,
@@ -110,6 +155,24 @@ inline std::string op_type_name(OpType op) {
         case OpType::MATMUL: return "matmul";
         case OpType::TRANSPOSE: return "transpose";
         case OpType::BATCH_MATMUL: return "batch_matmul";
+        case OpType::CONV1D: return "conv1d";
+        case OpType::CONV2D: return "conv2d";
+        case OpType::CONV3D: return "conv3d";
+        case OpType::CONV_TRANSPOSE2D: return "conv_transpose2d";
+        case OpType::MAX_POOL1D: return "max_pool1d";
+        case OpType::MAX_POOL2D: return "max_pool2d";
+        case OpType::MAX_POOL3D: return "max_pool3d";
+        case OpType::AVG_POOL1D: return "avg_pool1d";
+        case OpType::AVG_POOL2D: return "avg_pool2d";
+        case OpType::AVG_POOL3D: return "avg_pool3d";
+        case OpType::ADAPTIVE_AVG_POOL2D: return "adaptive_avg_pool2d";
+        case OpType::BATCH_NORM: return "batch_norm";
+        case OpType::LAYER_NORM: return "layer_norm";
+        case OpType::GROUP_NORM: return "group_norm";
+        case OpType::INSTANCE_NORM: return "instance_norm";
+        case OpType::DROPOUT: return "dropout";
+        case OpType::EMBEDDING: return "embedding";
+        case OpType::GATHER: return "gather";
         case OpType::RESHAPE: return "reshape";
         case OpType::VIEW: return "view";
         case OpType::SQUEEZE: return "squeeze";
@@ -127,6 +190,19 @@ inline std::string op_type_name(OpType op) {
         case OpType::LE: return "le";
         case OpType::GT: return "gt";
         case OpType::GE: return "ge";
+        case OpType::LESS: return "less";
+        case OpType::WHERE: return "where";
+        case OpType::MAXIMUM: return "maximum";
+        case OpType::MINIMUM: return "minimum";
+        case OpType::CLAMP: return "clamp";
+        case OpType::NLL_LOSS: return "nll_loss";
+        case OpType::CROSS_ENTROPY_LOSS: return "cross_entropy_loss";
+        case OpType::MSE_LOSS: return "mse_loss";
+        case OpType::L1_LOSS: return "l1_loss";
+        case OpType::BCE_LOSS: return "bce_loss";
+        case OpType::BCE_WITH_LOGITS_LOSS: return "bce_with_logits_loss";
+        case OpType::KL_DIV_LOSS: return "kl_div_loss";
+        case OpType::SMOOTH_L1_LOSS: return "smooth_l1_loss";
         case OpType::CONSTANT: return "constant";
         case OpType::INPUT: return "input";
         case OpType::PARAMETER: return "parameter";

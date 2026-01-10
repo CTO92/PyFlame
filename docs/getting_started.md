@@ -8,7 +8,7 @@
 
 ## Introduction
 
-PyFlame is a tensor computation library designed for the Cerebras Wafer-Scale Engine (WSE). This guide will help you get started with PyFlame, from installation to running your first computation.
+PyFlame is a tensor computation library designed for the Cerebras Wafer-Scale Engine (WSE). This guide will help you get started with PyFlame, from installation to running your first computation and training your first neural network.
 
 ### What You'll Learn
 
@@ -17,6 +17,8 @@ PyFlame is a tensor computation library designed for the Cerebras Wafer-Scale En
 3. Building computation graphs
 4. Executing computations
 5. Understanding lazy evaluation
+6. Building neural networks
+7. Training models with optimizers
 
 ---
 
@@ -331,6 +333,214 @@ pf.print_graph(e)
 
 # Get graph object for inspection
 graph = pf.get_graph(e)
+```
+
+---
+
+## 8. Building Neural Networks
+
+PyFlame provides a PyTorch-like `nn.Module` system for building neural networks.
+
+### Creating a Simple Model
+
+```python
+import pyflame as pf
+from pyflame import nn
+
+# Using built-in layers
+linear = nn.Linear(784, 256)
+print(f"Weight shape: {linear.weight.shape}")
+
+# Forward pass
+x = pf.randn([32, 784])
+y = linear(x)
+print(f"Output shape: {y.shape}")
+```
+
+### Building Custom Models
+
+```python
+class MLP(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        super().__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, output_dim)
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = pf.relu(x)
+        x = self.fc2(x)
+        return x
+
+# Create model
+model = MLP(784, 256, 10)
+
+# Forward pass
+x = pf.randn([32, 784])
+output = model(x)
+print(f"Model output shape: {output.shape}")
+```
+
+### Available Layers
+
+```python
+# Linear layers
+linear = nn.Linear(in_features, out_features, bias=True)
+
+# Convolutional layers
+conv2d = nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=0)
+conv1d = nn.Conv1d(in_channels, out_channels, kernel_size, stride=1, padding=0)
+
+# Normalization
+batch_norm = nn.BatchNorm2d(num_features)
+layer_norm = nn.LayerNorm(normalized_shape)
+
+# Pooling
+max_pool = nn.MaxPool2d(kernel_size, stride=None, padding=0)
+avg_pool = nn.AvgPool2d(kernel_size, stride=None, padding=0)
+
+# Dropout
+dropout = nn.Dropout(p=0.5)
+
+# Attention
+attention = nn.MultiheadAttention(embed_dim, num_heads)
+```
+
+---
+
+## 9. Loss Functions
+
+PyFlame provides common loss functions for training.
+
+```python
+from pyflame import nn
+
+# Regression losses
+mse_loss = nn.MSELoss()
+l1_loss = nn.L1Loss()
+smooth_l1 = nn.SmoothL1Loss()
+
+# Classification losses
+ce_loss = nn.CrossEntropyLoss()
+bce_loss = nn.BCELoss()
+bce_logits = nn.BCEWithLogitsLoss()
+nll_loss = nn.NLLLoss()
+
+# Other losses
+kl_div = nn.KLDivLoss()
+```
+
+### Example Usage
+
+```python
+# Classification example
+predictions = model(inputs)
+target = pf.tensor([1, 0, 2, 1])  # Class labels
+
+loss_fn = nn.CrossEntropyLoss()
+loss = loss_fn(predictions, target)
+
+# Regression example
+predictions = model(inputs)
+target = pf.randn([32, 10])
+
+loss_fn = nn.MSELoss()
+loss = loss_fn(predictions, target)
+```
+
+---
+
+## 10. Training with Optimizers
+
+PyFlame provides standard optimizers for training neural networks.
+
+### Available Optimizers
+
+```python
+from pyflame import optim
+
+# Get model parameters
+params = model.parameters()
+
+# SGD with momentum
+optimizer = optim.SGD(params, lr=0.01, momentum=0.9)
+
+# Adam optimizer
+optimizer = optim.Adam(params, lr=0.001)
+
+# AdamW with weight decay
+optimizer = optim.AdamW(params, lr=0.001, weight_decay=0.01)
+
+# RMSprop
+optimizer = optim.RMSprop(params, lr=0.01)
+```
+
+### Training Loop
+
+```python
+import pyflame as pf
+from pyflame import nn, optim
+
+# Create model and optimizer
+model = MLP(784, 256, 10)
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+loss_fn = nn.CrossEntropyLoss()
+
+# Training loop
+for epoch in range(num_epochs):
+    for batch_x, batch_y in dataloader:
+        # Zero gradients
+        optimizer.zero_grad()
+
+        # Forward pass
+        predictions = model(batch_x)
+        loss = loss_fn(predictions, batch_y)
+
+        # Backward pass
+        loss.backward()
+
+        # Update weights
+        optimizer.step()
+
+    print(f"Epoch {epoch}, Loss: {loss.numpy()}")
+```
+
+### Learning Rate Schedulers
+
+```python
+from pyflame import optim
+
+optimizer = optim.SGD(model.parameters(), lr=0.1)
+
+# Step decay every 30 epochs
+scheduler = optim.StepLR(optimizer, step_size=30, gamma=0.1)
+
+# Cosine annealing
+scheduler = optim.CosineAnnealingLR(optimizer, T_max=100)
+
+# Reduce on plateau
+scheduler = optim.ReduceLROnPlateau(optimizer, mode='min', patience=10)
+
+# In training loop
+for epoch in range(num_epochs):
+    train_one_epoch()
+    scheduler.step()  # Update learning rate
+```
+
+---
+
+## 11. Controlling Gradient Computation
+
+Use `no_grad()` context manager for inference or when you don't need gradients:
+
+```python
+import pyflame as pf
+from pyflame import autograd
+
+# Disable gradient computation for inference
+with autograd.no_grad():
+    predictions = model(test_inputs)
+    # No gradient tracking in this block
 ```
 
 ---

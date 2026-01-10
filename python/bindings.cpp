@@ -16,6 +16,9 @@
 namespace py = pybind11;
 using namespace pyflame;
 
+// Forward declaration for Phase 2 bindings
+void init_nn_bindings(py::module& m);
+
 // Helper to convert numpy array to Tensor
 Tensor numpy_to_tensor(py::array_t<float> arr, DType dtype, MeshLayout layout) {
     py::buffer_info buf = arr.request();
@@ -342,6 +345,11 @@ PYBIND11_MODULE(_pyflame_cpp, m) {
         return codegen.generate(*graph, opts);
     }, py::arg("tensor"), py::arg("output_dir") = "./pyflame_csl_output",
     "Compile tensor computation graph to CSL");
+
+    // ========================================================================
+    // Phase 2: Neural Network Bindings
+    // ========================================================================
+    init_nn_bindings(m);
 
     // ========================================================================
     // Version info

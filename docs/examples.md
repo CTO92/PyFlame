@@ -12,14 +12,20 @@ This document provides practical examples of using PyFlame for common deep learn
 
 ## Table of Contents
 
+### Core Operations
 1. [Basic Tensor Operations](#basic-tensor-operations)
-2. [Simple Neural Network](#simple-neural-network)
-3. [Multi-Layer Perceptron](#multi-layer-perceptron)
-4. [Batch Processing](#batch-processing)
-5. [Attention Mechanism](#attention-mechanism)
-6. [Distributed Computation with Layouts](#distributed-computation-with-layouts)
-7. [CSL Code Generation](#csl-code-generation)
-8. [Working with NumPy](#working-with-numpy)
+2. [Batch Processing](#batch-processing)
+3. [Distributed Computation with Layouts](#distributed-computation-with-layouts)
+4. [CSL Code Generation](#csl-code-generation)
+5. [Working with NumPy](#working-with-numpy)
+
+### Neural Networks (Phase 2)
+6. [Building Models with nn.Module](#building-models-with-nnmodule)
+7. [Convolutional Neural Networks](#convolutional-neural-networks)
+8. [Training with Optimizers](#training-with-optimizers)
+9. [Learning Rate Scheduling](#learning-rate-scheduling)
+10. [Transformer Attention](#transformer-attention)
+11. [Complete Training Example](#complete-training-example)
 
 ---
 
@@ -665,6 +671,500 @@ for batch_idx in range(n_batches):
         print(f"Batch {batch_idx}: accuracy = {acc:.2%}")
 
 print(f"\nAverage accuracy: {np.mean(accuracies):.2%}")
+```
+
+---
+
+## Building Models with nn.Module
+
+### Simple Linear Model
+
+```python
+import pyflame as pf
+from pyflame import nn
+
+# Create a simple linear classifier
+model = nn.Linear(784, 10)
+
+# Forward pass
+x = pf.randn([32, 784])  # Batch of 32 images
+logits = model(x)
+probs = pf.softmax(logits, dim=1)
+
+pf.eval(probs)
+print(f"Output shape: {probs.shape}")  # [32, 10]
+```
+
+### Custom Model with Sequential
+
+```python
+import pyflame as pf
+from pyflame import nn
+
+# Build MLP with Sequential
+model = nn.Sequential([
+    nn.Linear(784, 256),
+    nn.Linear(256, 128),
+    nn.Linear(128, 10)
+])
+
+# Use the model
+x = pf.randn([64, 784])
+output = model(x)
+pf.eval(output)
+
+print(f"Model has {len(model.parameters())} parameter tensors")
+```
+
+### Training and Evaluation Modes
+
+```python
+import pyflame as pf
+from pyflame import nn
+
+# Model with dropout
+class DropoutMLP(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc1 = self.register_module("fc1", nn.Linear(100, 50))
+        self.dropout = self.register_module("dropout", nn.Dropout(0.5))
+        self.fc2 = self.register_module("fc2", nn.Linear(50, 10))
+
+    def forward(self, x):
+        x = pf.relu(self.fc1(x))
+        x = self.dropout(x)
+        x = self.fc2(x)
+        return x
+
+model = DropoutMLP()
+
+# Training mode (dropout active)
+model.train()
+train_output = model(pf.randn([32, 100]))
+
+# Evaluation mode (dropout disabled)
+model.eval()
+eval_output = model(pf.randn([32, 100]))
+```
+
+---
+
+## Convolutional Neural Networks
+
+### Simple CNN
+
+```python
+import pyflame as pf
+from pyflame import nn
+
+# Define a simple CNN
+class SimpleCNN(nn.Module):
+    def __init__(self, num_classes=10):
+        super().__init__()
+        self.conv1 = self.register_module("conv1",
+            nn.Conv2d(1, 32, kernel_size=(3, 3), padding=(1, 1)))
+        self.pool1 = self.register_module("pool1",
+            nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2)))
+        self.conv2 = self.register_module("conv2",
+            nn.Conv2d(32, 64, kernel_size=(3, 3), padding=(1, 1)))
+        self.pool2 = self.register_module("pool2",
+            nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2)))
+        self.gap = self.register_module("gap", nn.GlobalAvgPool2d())
+        self.fc = self.register_module("fc", nn.Linear(64, num_classes))
+
+    def forward(self, x):
+        # x: [N, 1, 28, 28]
+        x = pf.relu(self.conv1(x))  # [N, 32, 28, 28]
+        x = self.pool1(x)           # [N, 32, 14, 14]
+        x = pf.relu(self.conv2(x))  # [N, 64, 14, 14]
+        x = self.pool2(x)           # [N, 64, 7, 7]
+        x = self.gap(x)             # [N, 64, 1, 1]
+        x = x.reshape([x.shape[0], -1])  # [N, 64]
+        x = self.fc(x)              # [N, 10]
+        return x
+
+model = SimpleCNN()
+x = pf.randn([16, 1, 28, 28])  # Batch of MNIST-like images
+output = model(x)
+pf.eval(output)
+print(f"CNN output shape: {output.shape}")  # [16, 10]
+```
+
+### CNN with BatchNorm
+
+```python
+import pyflame as pf
+from pyflame import nn
+
+class ConvBlock(nn.Module):
+    def __init__(self, in_ch, out_ch):
+        super().__init__()
+        self.conv = self.register_module("conv",
+            nn.Conv2d(in_ch, out_ch, kernel_size=(3, 3), padding=(1, 1)))
+        self.bn = self.register_module("bn", nn.BatchNorm2d(out_ch))
+
+    def forward(self, x):
+        return pf.relu(self.bn(self.conv(x)))
+
+# Stack conv blocks
+model = nn.Sequential([
+    ConvBlock(3, 64),
+    nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2)),
+    ConvBlock(64, 128),
+    nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2)),
+    ConvBlock(128, 256),
+    nn.AdaptiveAvgPool2d((1, 1))
+])
+
+x = pf.randn([8, 3, 32, 32])
+features = model(x)
+pf.eval(features)
+print(f"Feature shape: {features.shape}")  # [8, 256, 1, 1]
+```
+
+---
+
+## Training with Optimizers
+
+### Basic Training Loop
+
+```python
+import pyflame as pf
+from pyflame import nn
+from pyflame import optim
+import numpy as np
+
+# Create model and optimizer
+model = nn.Sequential([
+    nn.Linear(784, 256),
+    nn.Linear(256, 10)
+])
+
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+loss_fn = nn.CrossEntropyLoss()
+
+# Training loop
+for epoch in range(10):
+    # Simulated batch
+    x = pf.randn([64, 784])
+    targets = pf.tensor(np.random.randint(0, 10, 64))
+
+    # Forward pass
+    model.train()
+    logits = model(x)
+    loss = loss_fn(logits, targets)
+
+    # Backward pass
+    optimizer.zero_grad()
+    pf.autograd.backward(loss)
+
+    # Update weights
+    optimizer.step()
+
+    pf.eval(loss)
+    print(f"Epoch {epoch}: loss = {loss.numpy():.4f}")
+```
+
+### SGD with Momentum
+
+```python
+import pyflame as pf
+from pyflame import nn, optim
+
+model = nn.Linear(100, 10)
+
+# SGD with momentum and weight decay
+optimizer = optim.SGD(
+    model.parameters(),
+    lr=0.01,
+    momentum=0.9,
+    weight_decay=1e-4,
+    nesterov=True
+)
+
+# Training step
+x = pf.randn([32, 100])
+y = pf.randn([32, 10])
+
+output = model(x)
+loss = nn.functional.mse_loss(output, y)
+
+optimizer.zero_grad()
+pf.autograd.backward(loss)
+optimizer.step()
+```
+
+### AdamW for Transformers
+
+```python
+import pyflame as pf
+from pyflame import nn, optim
+
+# Transformer-style model
+model = nn.Sequential([
+    nn.Linear(512, 2048),
+    nn.Linear(2048, 512)
+])
+
+# AdamW with cosine learning rate schedule
+optimizer = optim.AdamW(
+    model.parameters(),
+    lr=1e-4,
+    weight_decay=0.01,
+    beta1=0.9,
+    beta2=0.98
+)
+```
+
+---
+
+## Learning Rate Scheduling
+
+### Step Decay
+
+```python
+import pyflame as pf
+from pyflame import nn, optim
+
+model = nn.Linear(100, 10)
+optimizer = optim.SGD(model.parameters(), lr=0.1)
+
+# Decay LR by 0.1 every 30 epochs
+scheduler = optim.StepLR(optimizer, step_size=30, gamma=0.1)
+
+for epoch in range(100):
+    # Train...
+    scheduler.step()
+    print(f"Epoch {epoch}: LR = {scheduler.get_lr():.6f}")
+```
+
+### Cosine Annealing
+
+```python
+import pyflame as pf
+from pyflame import nn, optim
+
+model = nn.Linear(100, 10)
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# Cosine annealing over 100 epochs
+scheduler = optim.CosineAnnealingLR(optimizer, T_max=100, eta_min=1e-6)
+
+for epoch in range(100):
+    # Train...
+    scheduler.step()
+```
+
+### One-Cycle Learning Rate
+
+```python
+import pyflame as pf
+from pyflame import nn, optim
+
+model = nn.Linear(100, 10)
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+total_steps = 1000 * 10  # 10 epochs, 1000 batches each
+scheduler = optim.OneCycleLR(
+    optimizer,
+    max_lr=0.01,
+    total_steps=total_steps,
+    pct_start=0.3  # 30% warmup
+)
+
+for step in range(total_steps):
+    # Train step...
+    scheduler.step()
+```
+
+### Reduce on Plateau
+
+```python
+import pyflame as pf
+from pyflame import nn, optim
+
+model = nn.Linear(100, 10)
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+scheduler = optim.ReduceLROnPlateau(
+    optimizer,
+    mode='min',      # Reduce when metric stops decreasing
+    factor=0.5,      # Multiply LR by 0.5
+    patience=5,      # Wait 5 epochs before reducing
+    min_lr=1e-7
+)
+
+for epoch in range(100):
+    train_loss = train(model)
+    val_loss = validate(model)
+
+    # Pass validation metric to scheduler
+    scheduler.step(val_loss)
+```
+
+---
+
+## Transformer Attention
+
+### Using MultiheadAttention
+
+```python
+import pyflame as pf
+from pyflame import nn
+
+# Create attention layer
+embed_dim = 512
+num_heads = 8
+mha = nn.MultiheadAttention(embed_dim, num_heads, dropout=0.1)
+
+# Self-attention
+seq_len, batch_size = 32, 16
+x = pf.randn([seq_len, batch_size, embed_dim])  # [seq, batch, embed]
+
+mha.train()
+output, attn_weights = mha.forward(x, x, x, need_weights=True)
+pf.eval(output, attn_weights)
+
+print(f"Output shape: {output.shape}")  # [32, 16, 512]
+print(f"Attention weights: {attn_weights.shape}")  # [16, 32, 32]
+```
+
+### Transformer Encoder Block
+
+```python
+import pyflame as pf
+from pyflame import nn
+
+class TransformerBlock(nn.Module):
+    def __init__(self, d_model, n_heads, d_ff, dropout=0.1):
+        super().__init__()
+        self.attn = self.register_module("attn",
+            nn.MultiheadAttention(d_model, n_heads, dropout))
+        self.norm1 = self.register_module("norm1", nn.LayerNorm([d_model]))
+        self.norm2 = self.register_module("norm2", nn.LayerNorm([d_model]))
+        self.ff = self.register_module("ff", nn.Sequential([
+            nn.Linear(d_model, d_ff),
+            nn.Linear(d_ff, d_model)
+        ]))
+        self.dropout = self.register_module("dropout", nn.Dropout(dropout))
+
+    def forward(self, x):
+        # Self-attention with residual
+        attn_out = self.attn(x)
+        x = self.norm1(x + self.dropout(attn_out))
+
+        # FFN with residual
+        ff_out = self.ff(pf.gelu(x))
+        x = self.norm2(x + self.dropout(ff_out))
+
+        return x
+
+# Stack transformer blocks
+d_model, n_heads, d_ff = 256, 8, 1024
+encoder = nn.Sequential([
+    TransformerBlock(d_model, n_heads, d_ff),
+    TransformerBlock(d_model, n_heads, d_ff),
+    TransformerBlock(d_model, n_heads, d_ff)
+])
+
+x = pf.randn([50, 8, d_model])  # [seq, batch, d_model]
+output = encoder(x)
+pf.eval(output)
+print(f"Encoder output: {output.shape}")
+```
+
+---
+
+## Complete Training Example
+
+### Training a Classifier
+
+```python
+import pyflame as pf
+from pyflame import nn, optim
+import numpy as np
+
+# ============================================
+# Model Definition
+# ============================================
+class MLP(nn.Module):
+    def __init__(self, input_dim, hidden_dim, num_classes):
+        super().__init__()
+        self.fc1 = self.register_module("fc1", nn.Linear(input_dim, hidden_dim))
+        self.bn1 = self.register_module("bn1", nn.BatchNorm1d(hidden_dim))
+        self.dropout = self.register_module("dropout", nn.Dropout(0.3))
+        self.fc2 = self.register_module("fc2", nn.Linear(hidden_dim, hidden_dim))
+        self.bn2 = self.register_module("bn2", nn.BatchNorm1d(hidden_dim))
+        self.fc3 = self.register_module("fc3", nn.Linear(hidden_dim, num_classes))
+
+    def forward(self, x):
+        x = pf.relu(self.bn1(self.fc1(x)))
+        x = self.dropout(x)
+        x = pf.relu(self.bn2(self.fc2(x)))
+        x = self.fc3(x)
+        return x
+
+# ============================================
+# Setup
+# ============================================
+model = MLP(input_dim=784, hidden_dim=256, num_classes=10)
+optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.01)
+scheduler = optim.CosineAnnealingLR(optimizer, T_max=100)
+loss_fn = nn.CrossEntropyLoss()
+
+# ============================================
+# Training Loop
+# ============================================
+num_epochs = 100
+batch_size = 64
+
+for epoch in range(num_epochs):
+    model.train()
+
+    # Simulated training data
+    x_train = pf.randn([batch_size, 784])
+    y_train = pf.tensor(np.random.randint(0, 10, batch_size))
+
+    # Forward
+    logits = model(x_train)
+    loss = loss_fn(logits, y_train)
+
+    # Backward
+    optimizer.zero_grad()
+    pf.autograd.backward(loss)
+
+    # Update
+    optimizer.step()
+    scheduler.step()
+
+    # Validation
+    if epoch % 10 == 0:
+        model.eval()
+        with pf.autograd.no_grad():
+            x_val = pf.randn([batch_size, 784])
+            y_val = np.random.randint(0, 10, batch_size)
+
+            val_logits = model(x_val)
+            pf.eval(val_logits, loss)
+
+            predictions = val_logits.numpy().argmax(axis=1)
+            accuracy = (predictions == y_val).mean()
+
+            print(f"Epoch {epoch}: loss={loss.numpy():.4f}, "
+                  f"acc={accuracy:.2%}, lr={scheduler.get_lr():.6f}")
+
+# ============================================
+# Save and Load Model
+# ============================================
+# Save state
+state = model.state_dict()
+optim_state = optimizer.state_dict()
+
+# Load state
+new_model = MLP(784, 256, 10)
+new_model.load_state_dict(state)
+
+print("Training complete!")
 ```
 
 ---

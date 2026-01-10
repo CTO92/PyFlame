@@ -4,12 +4,18 @@ include(GoogleTest)
 
 # C++ unit tests
 add_executable(pyflame_tests
+    # Phase 1 tests
     cpp/test_dtype.cpp
     cpp/test_layout.cpp
     cpp/test_tensor.cpp
     cpp/test_graph.cpp
     cpp/test_shape_inference.cpp
     cpp/test_operations.cpp
+    # Phase 2 tests
+    cpp/test_autograd.cpp
+    cpp/test_nn_layers.cpp
+    cpp/test_loss.cpp
+    cpp/test_optim.cpp
 )
 
 target_link_libraries(pyflame_tests PRIVATE

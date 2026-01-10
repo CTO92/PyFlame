@@ -17,12 +17,15 @@ PyFlame is a tensor computation library designed natively for the Cerebras Wafer
 - **2D Mesh Layouts**: First-class support for tensor distribution across PEs
 - **Python + C++ API**: Use from Python or C++ with the same abstractions
 - **NumPy Interoperability**: Easy conversion to/from NumPy arrays
+- **PyTorch-like API**: Familiar nn.Module system for building models
+- **Automatic Differentiation**: Full autograd support for training
+- **Complete Training Stack**: Optimizers, loss functions, and LR schedulers
 
 ## Project Status
 
 **Version:** Pre-Release Alpha 1.0
 
-**Phase 1 (Core Infrastructure)** - In Development
+**Phase 1 (Core Infrastructure)** - Complete
 
 - [x] Core tensor class with lazy evaluation
 - [x] Computation graph (IR) system
@@ -33,6 +36,20 @@ PyFlame is a tensor computation library designed natively for the Cerebras Wafer
 - [x] CSL code generation framework
 - [x] Python bindings via pybind11
 - [x] CPU reference implementation
+
+**Phase 2 (ML Primitives)** - Complete
+
+- [x] Automatic differentiation (autograd)
+- [x] Neural network module system (nn.Module)
+- [x] Linear layers (Linear)
+- [x] Convolutional layers (Conv1d, Conv2d)
+- [x] Normalization layers (BatchNorm, LayerNorm, GroupNorm)
+- [x] Pooling layers (MaxPool, AvgPool, AdaptivePool)
+- [x] Dropout layers
+- [x] Multi-head attention
+- [x] Loss functions (MSE, CrossEntropy, BCE, etc.)
+- [x] Optimizers (SGD, Adam, AdamW, RMSprop)
+- [x] Learning rate schedulers
 
 ## Requirements
 
@@ -133,6 +150,34 @@ print(result.numpy())
 x = pf.zeros([4096, 4096], layout=pf.MeshLayout.grid(16, 16))
 y = pf.zeros([4096, 4096], layout=pf.MeshLayout.grid(16, 16))
 z = x @ y  # Distributed across 256 PEs
+```
+
+### Training a Neural Network
+
+```python
+import pyflame as pf
+from pyflame import nn, optim
+
+# Define a model
+model = nn.Sequential(
+    nn.Linear(784, 256),
+    nn.ReLU(),
+    nn.Linear(256, 10)
+)
+
+# Setup optimizer and loss
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+loss_fn = nn.CrossEntropyLoss()
+
+# Training step
+x = pf.randn([32, 784])  # Batch of inputs
+y = pf.randint(0, 10, [32])  # Labels
+
+optimizer.zero_grad()
+output = model(x)
+loss = loss_fn(output, y)
+loss.backward()
+optimizer.step()
 ```
 
 ### C++
@@ -255,6 +300,47 @@ Internal architecture documentation:
 | Reductions | `sum`, `mean`, `max`, `min` |
 | Shape | `reshape`, `transpose`, `squeeze`, `unsqueeze` |
 | Combination | `cat`, `stack` |
+
+### Neural Network Layers (nn)
+
+| Layer | Description |
+|-------|-------------|
+| `nn.Linear` | Fully connected layer |
+| `nn.Conv1d`, `nn.Conv2d` | Convolutional layers |
+| `nn.BatchNorm1d`, `nn.BatchNorm2d` | Batch normalization |
+| `nn.LayerNorm`, `nn.GroupNorm` | Layer and group normalization |
+| `nn.MaxPool2d`, `nn.AvgPool2d` | Pooling layers |
+| `nn.Dropout` | Dropout regularization |
+| `nn.MultiheadAttention` | Multi-head attention |
+
+### Loss Functions (nn)
+
+| Loss | Description |
+|------|-------------|
+| `nn.MSELoss` | Mean squared error |
+| `nn.L1Loss` | Mean absolute error |
+| `nn.CrossEntropyLoss` | Cross-entropy for classification |
+| `nn.BCELoss`, `nn.BCEWithLogitsLoss` | Binary cross-entropy |
+| `nn.NLLLoss` | Negative log likelihood |
+| `nn.KLDivLoss` | KL divergence |
+
+### Optimizers (optim)
+
+| Optimizer | Description |
+|-----------|-------------|
+| `optim.SGD` | Stochastic gradient descent with momentum |
+| `optim.Adam` | Adam optimizer |
+| `optim.AdamW` | Adam with decoupled weight decay |
+| `optim.RMSprop` | RMSprop optimizer |
+
+### Learning Rate Schedulers (optim)
+
+| Scheduler | Description |
+|-----------|-------------|
+| `optim.StepLR` | Decay LR every N steps |
+| `optim.CosineAnnealingLR` | Cosine annealing schedule |
+| `optim.ReduceLROnPlateau` | Reduce LR when metric plateaus |
+| `optim.OneCycleLR` | One-cycle learning rate policy |
 
 ### Layouts
 

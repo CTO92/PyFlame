@@ -19,11 +19,38 @@ set(PYFLAME_BACKEND_SOURCES
     backend/executor.cpp
 )
 
+# Phase 2: Autograd sources
+set(PYFLAME_AUTOGRAD_SOURCES
+    autograd/grad_mode.cpp
+    autograd/autograd.cpp
+)
+
+# Phase 2: Neural network sources
+set(PYFLAME_NN_SOURCES
+    nn/module.cpp
+    nn/linear.cpp
+    nn/conv.cpp
+    nn/normalization.cpp
+    nn/pooling.cpp
+    nn/dropout.cpp
+    nn/attention.cpp
+    nn/loss.cpp
+)
+
+# Phase 2: Optimizer sources
+set(PYFLAME_OPTIM_SOURCES
+    optim/optimizer.cpp
+    optim/lr_scheduler.cpp
+)
+
 # Core library
 add_library(pyflame_core STATIC
     ${PYFLAME_CORE_SOURCES}
     ${PYFLAME_OPS_SOURCES}
     ${PYFLAME_BACKEND_SOURCES}
+    ${PYFLAME_AUTOGRAD_SOURCES}
+    ${PYFLAME_NN_SOURCES}
+    ${PYFLAME_OPTIM_SOURCES}
 )
 
 target_include_directories(pyflame_core

@@ -2,6 +2,7 @@
 
 pybind11_add_module(_pyflame_cpp MODULE
     bindings.cpp
+    nn_bindings.cpp
 )
 
 target_link_libraries(_pyflame_cpp PRIVATE

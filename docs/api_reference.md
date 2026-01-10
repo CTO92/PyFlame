@@ -8,6 +8,7 @@
 
 ## Table of Contents
 
+### Core API (Phase 1)
 1. [Data Types](#data-types)
 2. [Tensor Class](#tensor-class)
 3. [Tensor Creation Functions](#tensor-creation-functions)
@@ -21,7 +22,16 @@
 11. [Layouts](#layouts)
 12. [Graph Inspection](#graph-inspection)
 13. [CSL Code Generation](#csl-code-generation)
-14. [Utility Functions](#utility-functions)
+
+### ML Primitives (Phase 2)
+14. [Automatic Differentiation](#automatic-differentiation)
+15. [Neural Network Modules](#neural-network-modules)
+16. [Loss Functions](#loss-functions)
+17. [Optimizers](#optimizers)
+18. [Learning Rate Schedulers](#learning-rate-schedulers)
+
+### Utilities
+19. [Utility Functions](#utility-functions)
 
 ---
 
@@ -855,6 +865,563 @@ Convenience function to compile a tensor's graph to CSL.
 >>> b = pf.randn([100, 100])
 >>> c = pf.relu(a @ b)
 >>> result = pf.compile_to_csl(c)
+```
+
+---
+
+## Automatic Differentiation
+
+PyFlame supports automatic differentiation (autograd) for computing gradients through the computation graph.
+
+### GradMode
+
+Control whether gradient computation is enabled.
+
+```python
+import pyflame as pf
+
+# Check if gradients are enabled
+pf.autograd.GradMode.is_enabled()  # True by default
+
+# Disable gradient computation
+pf.autograd.GradMode.set_enabled(False)
+
+# Re-enable
+pf.autograd.GradMode.set_enabled(True)
+```
+
+### no_grad Context Manager
+
+Temporarily disable gradient tracking.
+
+```python
+with pf.autograd.no_grad():
+    # Operations here won't track gradients
+    output = model(input)
+```
+
+### backward(output, grad_output=None)
+
+Compute gradients for the output tensor.
+
+```python
+# Forward pass
+x = pf.randn([10, 5])
+y = pf.randn([5, 3])
+z = x @ y
+loss = z.sum()
+
+# Backward pass
+pf.autograd.backward(loss)
+```
+
+---
+
+## Neural Network Modules
+
+The `pf.nn` module provides building blocks for neural networks.
+
+### Module Base Class
+
+All layers inherit from `Module`:
+
+```python
+class Module:
+    def forward(self, input: Tensor) -> Tensor
+    def parameters(self) -> list[Tensor]
+    def zero_grad(self)
+    def train(mode: bool = True)
+    def eval()
+    def is_training() -> bool
+    def state_dict() -> dict
+    def load_state_dict(dict)
+```
+
+### Linear Layer
+
+`pf.nn.Linear(in_features, out_features, bias=True)`
+
+Fully connected layer: y = x @ W^T + b
+
+```python
+layer = pf.nn.Linear(512, 256)
+output = layer(input)  # [batch, 512] -> [batch, 256]
+
+# Access parameters
+layer.weight  # [256, 512]
+layer.bias    # [256]
+```
+
+### Convolution Layers
+
+#### Conv2d
+
+`pf.nn.Conv2d(in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True)`
+
+```python
+conv = pf.nn.Conv2d(3, 64, kernel_size=(3, 3), padding=(1, 1))
+output = conv(input)  # [N, 3, H, W] -> [N, 64, H, W]
+```
+
+#### Conv1d
+
+`pf.nn.Conv1d(in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True)`
+
+```python
+conv = pf.nn.Conv1d(128, 256, kernel_size=3, padding=1)
+output = conv(input)  # [N, 128, L] -> [N, 256, L]
+```
+
+### Normalization Layers
+
+#### BatchNorm2d
+
+`pf.nn.BatchNorm2d(num_features, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True)`
+
+```python
+bn = pf.nn.BatchNorm2d(64)
+output = bn(input)  # [N, 64, H, W]
+```
+
+#### BatchNorm1d
+
+`pf.nn.BatchNorm1d(num_features, eps=1e-5, momentum=0.1, affine=True, track_running_stats=True)`
+
+```python
+bn = pf.nn.BatchNorm1d(256)
+output = bn(input)  # [N, 256] or [N, 256, L]
+```
+
+#### LayerNorm
+
+`pf.nn.LayerNorm(normalized_shape, eps=1e-5, elementwise_affine=True)`
+
+```python
+ln = pf.nn.LayerNorm([768])
+output = ln(input)  # [batch, seq, 768]
+```
+
+#### GroupNorm
+
+`pf.nn.GroupNorm(num_groups, num_channels, eps=1e-5, affine=True)`
+
+```python
+gn = pf.nn.GroupNorm(32, 256)  # 32 groups, 256 channels
+output = gn(input)  # [N, 256, H, W]
+```
+
+### Pooling Layers
+
+#### MaxPool2d
+
+`pf.nn.MaxPool2d(kernel_size, stride=None, padding=0, dilation=1, ceil_mode=False)`
+
+```python
+pool = pf.nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
+output = pool(input)  # [N, C, H, W] -> [N, C, H/2, W/2]
+```
+
+#### AvgPool2d
+
+`pf.nn.AvgPool2d(kernel_size, stride=None, padding=0, ceil_mode=False, count_include_pad=True)`
+
+```python
+pool = pf.nn.AvgPool2d(kernel_size=(2, 2))
+output = pool(input)
+```
+
+#### AdaptiveAvgPool2d
+
+`pf.nn.AdaptiveAvgPool2d(output_size)`
+
+```python
+pool = pf.nn.AdaptiveAvgPool2d((1, 1))  # Global average pooling
+output = pool(input)  # [N, C, H, W] -> [N, C, 1, 1]
+```
+
+#### GlobalAvgPool2d
+
+`pf.nn.GlobalAvgPool2d()`
+
+```python
+pool = pf.nn.GlobalAvgPool2d()
+output = pool(input)  # [N, C, H, W] -> [N, C, 1, 1]
+```
+
+### Dropout Layers
+
+#### Dropout
+
+`pf.nn.Dropout(p=0.5, inplace=False)`
+
+```python
+dropout = pf.nn.Dropout(0.5)
+dropout.train()  # Enable dropout
+output = dropout(input)
+
+dropout.eval()   # Disable dropout (inference)
+output = dropout(input)  # Pass-through
+```
+
+#### Dropout2d
+
+`pf.nn.Dropout2d(p=0.5, inplace=False)`
+
+Drops entire channels (spatial dropout).
+
+```python
+dropout = pf.nn.Dropout2d(0.2)
+output = dropout(input)  # [N, C, H, W]
+```
+
+### Attention Layers
+
+#### MultiheadAttention
+
+`pf.nn.MultiheadAttention(embed_dim, num_heads, dropout=0.0, bias=True, add_bias_kv=False, add_zero_attn=False, kdim=None, vdim=None, batch_first=False)`
+
+```python
+mha = pf.nn.MultiheadAttention(embed_dim=512, num_heads=8)
+
+# Self-attention
+output = mha(x)  # [seq, batch, embed] -> [seq, batch, embed]
+
+# Cross-attention
+output, attn_weights = mha.forward(query, key, value, need_weights=True)
+```
+
+#### SelfAttention
+
+`pf.nn.SelfAttention(embed_dim, num_heads, dropout=0.0, bias=True)`
+
+```python
+attn = pf.nn.SelfAttention(768, 12)
+output = attn(input)  # [seq, batch, 768]
+```
+
+#### CrossAttention
+
+`pf.nn.CrossAttention(embed_dim, num_heads, dropout=0.0, bias=True)`
+
+```python
+attn = pf.nn.CrossAttention(512, 8)
+output = attn(query, context)
+```
+
+### Sequential Container
+
+`pf.nn.Sequential(*modules)`
+
+```python
+model = pf.nn.Sequential([
+    pf.nn.Linear(784, 256),
+    pf.nn.Linear(256, 128),
+    pf.nn.Linear(128, 10)
+])
+
+# Or add incrementally
+model = pf.nn.Sequential()
+model.add(pf.nn.Linear(784, 256))
+model.add(pf.nn.Linear(256, 10))
+
+output = model(input)
+```
+
+---
+
+## Loss Functions
+
+The `pf.nn` module provides common loss functions.
+
+### Reduction Modes
+
+All loss functions support reduction modes:
+- `pf.nn.Reduction.NONE` - Return per-element loss
+- `pf.nn.Reduction.MEAN` - Mean of all elements (default)
+- `pf.nn.Reduction.SUM` - Sum of all elements
+
+### MSELoss
+
+`pf.nn.MSELoss(reduction='mean')`
+
+Mean Squared Error: L = (pred - target)²
+
+```python
+loss_fn = pf.nn.MSELoss()
+loss = loss_fn(predictions, targets)
+```
+
+### L1Loss
+
+`pf.nn.L1Loss(reduction='mean')`
+
+Mean Absolute Error: L = |pred - target|
+
+```python
+loss_fn = pf.nn.L1Loss()
+loss = loss_fn(predictions, targets)
+```
+
+### SmoothL1Loss
+
+`pf.nn.SmoothL1Loss(reduction='mean', beta=1.0)`
+
+Huber loss: smooth transition between L1 and L2.
+
+```python
+loss_fn = pf.nn.SmoothL1Loss(beta=1.0)
+loss = loss_fn(predictions, targets)
+```
+
+### CrossEntropyLoss
+
+`pf.nn.CrossEntropyLoss(reduction='mean', ignore_index=-100, label_smoothing=0.0)`
+
+Combines LogSoftmax and NLLLoss for classification.
+
+```python
+loss_fn = pf.nn.CrossEntropyLoss()
+# logits: [batch, num_classes], targets: [batch] (class indices)
+loss = loss_fn(logits, targets)
+
+# With label smoothing
+loss_fn = pf.nn.CrossEntropyLoss(label_smoothing=0.1)
+```
+
+### BCELoss
+
+`pf.nn.BCELoss(reduction='mean')`
+
+Binary Cross Entropy (input should be probabilities).
+
+```python
+loss_fn = pf.nn.BCELoss()
+loss = loss_fn(pf.sigmoid(logits), targets)
+```
+
+### BCEWithLogitsLoss
+
+`pf.nn.BCEWithLogitsLoss(reduction='mean')`
+
+Numerically stable BCE with sigmoid built-in.
+
+```python
+loss_fn = pf.nn.BCEWithLogitsLoss()
+loss = loss_fn(logits, targets)  # No sigmoid needed
+```
+
+### NLLLoss
+
+`pf.nn.NLLLoss(reduction='mean', ignore_index=-100)`
+
+Negative Log Likelihood (input should be log-probabilities).
+
+```python
+loss_fn = pf.nn.NLLLoss()
+loss = loss_fn(pf.log_softmax(logits, dim=1), targets)
+```
+
+### KLDivLoss
+
+`pf.nn.KLDivLoss(reduction='mean', log_target=False)`
+
+Kullback-Leibler Divergence.
+
+```python
+loss_fn = pf.nn.KLDivLoss()
+loss = loss_fn(log_probs, target_probs)
+```
+
+### Functional Interface
+
+```python
+from pyflame.nn import functional as F
+
+loss = F.mse_loss(pred, target)
+loss = F.l1_loss(pred, target)
+loss = F.cross_entropy(logits, targets)
+loss = F.bce_loss(probs, targets)
+loss = F.bce_with_logits(logits, targets)
+```
+
+---
+
+## Optimizers
+
+The `pf.optim` module provides optimization algorithms.
+
+### SGD
+
+`pf.optim.SGD(params, lr, momentum=0.0, dampening=0.0, weight_decay=0.0, nesterov=False)`
+
+Stochastic Gradient Descent with optional momentum.
+
+```python
+model = pf.nn.Linear(100, 10)
+optimizer = pf.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+
+# Training loop
+for batch in data:
+    optimizer.zero_grad()
+    loss = loss_fn(model(batch.x), batch.y)
+    pf.autograd.backward(loss)
+    optimizer.step()
+```
+
+### Adam
+
+`pf.optim.Adam(params, lr=0.001, beta1=0.9, beta2=0.999, eps=1e-8, weight_decay=0.0, amsgrad=False)`
+
+Adam optimizer with adaptive learning rates.
+
+```python
+optimizer = pf.optim.Adam(model.parameters(), lr=0.001)
+
+# With weight decay
+optimizer = pf.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
+
+# AMSGrad variant
+optimizer = pf.optim.Adam(model.parameters(), lr=0.001, amsgrad=True)
+```
+
+### AdamW
+
+`pf.optim.AdamW(params, lr=0.001, beta1=0.9, beta2=0.999, eps=1e-8, weight_decay=0.01, amsgrad=False)`
+
+Adam with decoupled weight decay (recommended for transformers).
+
+```python
+optimizer = pf.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.01)
+```
+
+### RMSprop
+
+`pf.optim.RMSprop(params, lr=0.01, alpha=0.99, eps=1e-8, weight_decay=0.0, momentum=0.0, centered=False)`
+
+```python
+optimizer = pf.optim.RMSprop(model.parameters(), lr=0.01)
+
+# With momentum
+optimizer = pf.optim.RMSprop(model.parameters(), lr=0.01, momentum=0.9)
+```
+
+### Optimizer Methods
+
+All optimizers support:
+
+```python
+optimizer.step()           # Update parameters
+optimizer.zero_grad()      # Zero all gradients
+optimizer.get_lr()         # Get current learning rate
+optimizer.set_lr(new_lr)   # Set learning rate
+optimizer.state_dict()     # Get state for checkpointing
+optimizer.load_state_dict(state)  # Load state
+```
+
+---
+
+## Learning Rate Schedulers
+
+The `pf.optim` module provides learning rate schedulers.
+
+### StepLR
+
+`pf.optim.StepLR(optimizer, step_size, gamma=0.1, last_epoch=-1)`
+
+Decay LR by gamma every step_size epochs.
+
+```python
+scheduler = pf.optim.StepLR(optimizer, step_size=30, gamma=0.1)
+
+for epoch in range(100):
+    train(...)
+    scheduler.step()  # LR *= 0.1 at epochs 30, 60, 90
+```
+
+### MultiStepLR
+
+`pf.optim.MultiStepLR(optimizer, milestones, gamma=0.1, last_epoch=-1)`
+
+Decay LR at specific epochs.
+
+```python
+scheduler = pf.optim.MultiStepLR(optimizer, milestones=[30, 80], gamma=0.1)
+# LR *= 0.1 at epochs 30 and 80
+```
+
+### ExponentialLR
+
+`pf.optim.ExponentialLR(optimizer, gamma, last_epoch=-1)`
+
+Decay LR by gamma every epoch.
+
+```python
+scheduler = pf.optim.ExponentialLR(optimizer, gamma=0.95)
+# LR *= 0.95 each epoch
+```
+
+### CosineAnnealingLR
+
+`pf.optim.CosineAnnealingLR(optimizer, T_max, eta_min=0.0, last_epoch=-1)`
+
+Cosine annealing schedule.
+
+```python
+scheduler = pf.optim.CosineAnnealingLR(optimizer, T_max=100, eta_min=1e-6)
+```
+
+### ReduceLROnPlateau
+
+`pf.optim.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10, threshold=1e-4, cooldown=0, min_lr=0.0)`
+
+Reduce LR when metric stops improving.
+
+```python
+scheduler = pf.optim.ReduceLROnPlateau(optimizer, mode='min', patience=10)
+
+for epoch in range(100):
+    train(...)
+    val_loss = validate(...)
+    scheduler.step(val_loss)  # Pass validation metric
+```
+
+### OneCycleLR
+
+`pf.optim.OneCycleLR(optimizer, max_lr, total_steps, pct_start=0.3, anneal_strategy='cos', div_factor=25.0, final_div_factor=1e4, last_epoch=-1)`
+
+1cycle learning rate policy (warmup + annealing).
+
+```python
+scheduler = pf.optim.OneCycleLR(
+    optimizer,
+    max_lr=0.1,
+    total_steps=1000,
+    pct_start=0.3  # 30% warmup
+)
+
+for step in range(1000):
+    train_step(...)
+    scheduler.step()
+```
+
+### LinearLR
+
+`pf.optim.LinearLR(optimizer, start_factor=1/3, end_factor=1.0, total_iters=5, last_epoch=-1)`
+
+Linear learning rate warmup.
+
+```python
+scheduler = pf.optim.LinearLR(optimizer, start_factor=0.1, end_factor=1.0, total_iters=10)
+```
+
+### PolynomialLR
+
+`pf.optim.PolynomialLR(optimizer, total_iters, power=1.0, end_lr=0.0, last_epoch=-1)`
+
+Polynomial decay schedule.
+
+```python
+scheduler = pf.optim.PolynomialLR(optimizer, total_iters=100, power=2.0)
 ```
 
 ---
