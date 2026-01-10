@@ -40,7 +40,22 @@ PyFlame is a tensor computation library designed natively for the Cerebras Wafer
 - C++17 compiler (GCC 9+, Clang 10+, MSVC 2019+)
 - Python 3.8+
 - pybind11 2.10+
-- (Optional) Cerebras SDK for WSE execution
+
+### Cerebras SDK (Optional)
+
+PyFlame includes a **CPU reference implementation** that allows you to develop, test, and validate your models without access to Cerebras hardware. All tensor operations, graph building, and CSL code generation work without the SDK.
+
+To actually **execute on Cerebras WSE hardware**, you need:
+
+- **Cerebras SDK** - This is proprietary software available only to Cerebras customers and partners. It is not publicly downloadable.
+- **Access to Cerebras hardware** - Either on-premises CS-2/CS-3 systems or Cerebras cloud.
+
+If you are interested in running PyFlame on Cerebras hardware, please contact [Cerebras Systems](https://www.cerebras.net/contact/) to inquire about SDK access and hardware availability.
+
+To build with Cerebras SDK support (once you have access):
+```bash
+cmake .. -DPYFLAME_USE_CEREBRAS_SDK=ON -DCEREBRAS_SDK_PATH=/path/to/sdk
+```
 
 ## Building
 
@@ -48,7 +63,7 @@ PyFlame is a tensor computation library designed natively for the Cerebras Wafer
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/pyflame.git
+git clone https://github.com/CTO92/PyFlame.git
 cd pyflame
 
 # Create build directory
@@ -71,7 +86,7 @@ pip install -e .
 
 ```powershell
 # Clone and build
-git clone https://github.com/yourusername/pyflame.git
+git clone https://github.com/CTO92/PyFlame.git
 cd pyflame
 
 mkdir build
