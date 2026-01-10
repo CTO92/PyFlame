@@ -4,10 +4,12 @@
 #include <vector>
 #include <random>
 #include <cstring>
+#include <mutex>
 
 #include "pyflame/core/dtype.hpp"
 #include "pyflame/core/layout.hpp"
 #include "pyflame/core/allocator.hpp"
+#include "pyflame/core/safe_math.hpp"
 #include "pyflame/ir/graph.hpp"
 #include "pyflame/ir/node.hpp"
 #include "pyflame/ir/shape_inference.hpp"
@@ -33,30 +35,50 @@ public:
     }
 
     /// Create from data (creates a constant node)
+    /// @param data Pointer to source data buffer
+    /// @param shape Shape of the tensor (validated for overflow)
+    /// @param dtype Data type
+    /// @param layout Mesh layout
+    /// @param data_size Optional: actual size of data buffer for validation
     static std::shared_ptr<TensorImpl> from_data(
         const void* data,
         const std::vector<int64_t>& shape,
         DType dtype,
-        MeshLayout layout
+        MeshLayout layout,
+        size_t data_size = 0  // 0 means trust the shape (legacy behavior)
     ) {
+        if (!data) {
+            throw std::invalid_argument("Data pointer cannot be null");
+        }
+
+        // Validate shape to prevent overflow attacks
+        validate_shape(shape);
+
         auto impl = std::make_shared<TensorImpl>();
 
         // Get or create graph
         impl->graph_ = get_current_graph();
 
-        // Create tensor spec
+        // Create tensor spec (numel() and size_bytes() now have overflow checking)
         ir::TensorSpec spec(shape, dtype, layout);
+
+        // Validate buffer size if provided
+        size_t expected_bytes = spec.size_bytes();
+        if (data_size > 0 && data_size < expected_bytes) {
+            throw std::invalid_argument(
+                "Data buffer too small: provided " + std::to_string(data_size) +
+                " bytes, need " + std::to_string(expected_bytes) + " bytes");
+        }
 
         // Create constant node
         impl->node_ = impl->graph_->create_constant(spec, data);
 
         // Store data immediately (constants are always materialized)
-        size_t bytes = spec.size_bytes();
         impl->data_ = std::shared_ptr<uint8_t>(
-            static_cast<uint8_t*>(Allocator::allocate(bytes)),
+            static_cast<uint8_t*>(Allocator::allocate(expected_bytes)),
             [](uint8_t* p) { Allocator::deallocate(p); }
         );
-        std::memcpy(impl->data_.get(), data, bytes);
+        std::memcpy(impl->data_.get(), data, expected_bytes);
 
         return impl;
     }
@@ -67,6 +89,9 @@ public:
         DType dtype,
         MeshLayout layout
     ) {
+        // Validate shape to prevent overflow
+        validate_shape(shape);
+
         ir::TensorSpec spec(shape, dtype, layout);
         size_t bytes = spec.size_bytes();
 
@@ -76,7 +101,7 @@ public:
             [](uint8_t* p) { Allocator::deallocate(p); }
         );
 
-        return from_data(data.get(), shape, dtype, layout);
+        return from_data(data.get(), shape, dtype, layout, bytes);
     }
 
     /// Create ones tensor
@@ -85,6 +110,9 @@ public:
         DType dtype,
         MeshLayout layout
     ) {
+        // Validate shape to prevent overflow
+        validate_shape(shape);
+
         ir::TensorSpec spec(shape, dtype, layout);
         size_t bytes = spec.size_bytes();
         int64_t numel = spec.numel();
@@ -110,7 +138,7 @@ public:
                 throw std::runtime_error("Unsupported dtype for ones");
         }
 
-        return from_data(data.get(), shape, dtype, layout);
+        return from_data(data.get(), shape, dtype, layout, bytes);
     }
 
     /// Create tensor filled with a value
@@ -120,6 +148,9 @@ public:
         DType dtype,
         MeshLayout layout
     ) {
+        // Validate shape to prevent overflow
+        validate_shape(shape);
+
         ir::TensorSpec spec(shape, dtype, layout);
         size_t bytes = spec.size_bytes();
         int64_t numel = spec.numel();
@@ -144,7 +175,22 @@ public:
                 throw std::runtime_error("Unsupported dtype for full");
         }
 
-        return from_data(data.get(), shape, dtype, layout);
+        return from_data(data.get(), shape, dtype, layout, bytes);
+    }
+
+    /// Get thread-safe random generator
+    /// Uses lazy initialization with unique_ptr for controlled destruction
+    static std::mt19937& get_random_generator() {
+        // Use unique_ptr for controlled destruction order
+        static thread_local std::unique_ptr<std::mt19937> gen_ptr;
+        static thread_local std::once_flag init_flag;
+
+        // Lazy initialization
+        if (!gen_ptr) {
+            std::random_device rd;
+            gen_ptr = std::make_unique<std::mt19937>(rd());
+        }
+        return *gen_ptr;
     }
 
     /// Create tensor with random normal values
@@ -153,6 +199,9 @@ public:
         DType dtype,
         MeshLayout layout
     ) {
+        // Validate shape to prevent overflow
+        validate_shape(shape);
+
         ir::TensorSpec spec(shape, dtype, layout);
         size_t bytes = spec.size_bytes();
         int64_t numel = spec.numel();
@@ -162,7 +211,7 @@ public:
             [](uint8_t* p) { Allocator::deallocate(p); }
         );
 
-        static thread_local std::mt19937 gen(std::random_device{}());
+        auto& gen = get_random_generator();
         std::normal_distribution<float> dist(0.0f, 1.0f);
 
         switch (dtype) {
@@ -177,7 +226,7 @@ public:
                 throw std::runtime_error("Unsupported dtype for randn");
         }
 
-        return from_data(data.get(), shape, dtype, layout);
+        return from_data(data.get(), shape, dtype, layout, bytes);
     }
 
     /// Create tensor with uniform random values in [0, 1)
@@ -186,6 +235,9 @@ public:
         DType dtype,
         MeshLayout layout
     ) {
+        // Validate shape to prevent overflow
+        validate_shape(shape);
+
         ir::TensorSpec spec(shape, dtype, layout);
         size_t bytes = spec.size_bytes();
         int64_t numel = spec.numel();
@@ -195,7 +247,7 @@ public:
             [](uint8_t* p) { Allocator::deallocate(p); }
         );
 
-        static thread_local std::mt19937 gen(std::random_device{}());
+        auto& gen = get_random_generator();
         std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 
         switch (dtype) {
@@ -210,7 +262,7 @@ public:
                 throw std::runtime_error("Unsupported dtype for rand");
         }
 
-        return from_data(data.get(), shape, dtype, layout);
+        return from_data(data.get(), shape, dtype, layout, bytes);
     }
 
     /// Create tensor with values from start to end
@@ -220,10 +272,17 @@ public:
         int64_t step,
         DType dtype
     ) {
+        if (step == 0) {
+            throw std::invalid_argument("arange step cannot be zero");
+        }
+
         int64_t numel = (end - start + step - 1) / step;
         if (numel <= 0) numel = 0;
 
+        // Validate the resulting shape
         std::vector<int64_t> shape = {numel};
+        validate_shape(shape);
+
         ir::TensorSpec spec(shape, dtype, MeshLayout::SinglePE());
         size_t bytes = spec.size_bytes();
 
@@ -251,7 +310,7 @@ public:
                 throw std::runtime_error("Unsupported dtype for arange");
         }
 
-        return from_data(data.get(), shape, dtype, MeshLayout::SinglePE());
+        return from_data(data.get(), shape, dtype, MeshLayout::SinglePE(), bytes);
     }
 
     // Accessors

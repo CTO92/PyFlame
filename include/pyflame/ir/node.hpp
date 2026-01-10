@@ -6,9 +6,11 @@
 #include <map>
 #include <any>
 #include <optional>
+#include <typeinfo>
 
 #include "pyflame/core/dtype.hpp"
 #include "pyflame/core/layout.hpp"
+#include "pyflame/core/safe_math.hpp"
 #include "pyflame/ir/op_type.hpp"
 
 namespace pyflame::ir {
@@ -35,17 +37,14 @@ struct TensorSpec {
     TensorSpec(std::vector<int64_t> s, DType d = DType::Float32, MeshLayout l = MeshLayout::SinglePE())
         : shape(std::move(s)), dtype(d), layout(l) {}
 
-    /// Total number of elements
+    /// Total number of elements (with overflow checking)
     int64_t numel() const {
-        if (shape.empty()) return 1;  // Scalar
-        int64_t n = 1;
-        for (auto d : shape) n *= d;
-        return n;
+        return safe_numel(shape);
     }
 
-    /// Size in bytes
+    /// Size in bytes (with overflow checking)
     size_t size_bytes() const {
-        return static_cast<size_t>(numel()) * dtype_size(dtype);
+        return safe_size_bytes(numel(), dtype_size(dtype));
     }
 
     /// Number of dimensions
@@ -127,7 +126,13 @@ public:
         if (it == attrs_.end()) {
             throw std::runtime_error("Attribute not found: " + key);
         }
-        return std::any_cast<T>(it->second);
+        try {
+            return std::any_cast<T>(it->second);
+        } catch (const std::bad_any_cast& e) {
+            throw std::runtime_error(
+                "Type mismatch for attribute '" + key + "': expected " +
+                typeid(T).name() + ", got " + it->second.type().name());
+        }
     }
 
     template<typename T>
@@ -136,7 +141,23 @@ public:
         if (it == attrs_.end()) {
             return default_value;
         }
-        return std::any_cast<T>(it->second);
+        try {
+            return std::any_cast<T>(it->second);
+        } catch (const std::bad_any_cast& e) {
+            throw std::runtime_error(
+                "Type mismatch for attribute '" + key + "': expected " +
+                typeid(T).name() + ", got " + it->second.type().name());
+        }
+    }
+
+    /// Check if attribute exists and has the expected type
+    template<typename T>
+    bool has_attr_of_type(const std::string& key) const {
+        auto it = attrs_.find(key);
+        if (it == attrs_.end()) {
+            return false;
+        }
+        return it->second.type() == typeid(T);
     }
 
     bool has_attr(const std::string& key) const {

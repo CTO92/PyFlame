@@ -9,6 +9,7 @@
 #include "pyflame/core/tensor_impl.hpp"
 #include "pyflame/core/dtype.hpp"
 #include "pyflame/core/layout.hpp"
+#include "pyflame/core/safe_math.hpp"
 #include "pyflame/ir/graph.hpp"
 #include "pyflame/ir/node.hpp"
 #include "pyflame/backend/csl_codegen.hpp"
@@ -19,16 +20,82 @@ using namespace pyflame;
 // Forward declaration for Phase 2 bindings
 void init_nn_bindings(py::module& m);
 
+// ============================================================================
+// Input Validation for Python Boundary
+// ============================================================================
+
+/// Validate numpy array properties before converting to tensor
+void validate_numpy_array(const py::buffer_info& buf, DType expected_dtype) {
+    // Check for null pointer
+    if (!buf.ptr) {
+        throw std::invalid_argument("NumPy array has null data pointer");
+    }
+
+    // Validate number of dimensions
+    if (buf.ndim < 0 || buf.ndim > MAX_TENSOR_DIMS) {
+        throw std::invalid_argument(
+            "NumPy array has invalid number of dimensions: " +
+            std::to_string(buf.ndim) + " (max: " + std::to_string(MAX_TENSOR_DIMS) + ")");
+    }
+
+    // Validate itemsize matches expected dtype
+    size_t expected_itemsize = dtype_size(expected_dtype);
+    if (static_cast<size_t>(buf.itemsize) != expected_itemsize) {
+        throw std::invalid_argument(
+            "NumPy array itemsize mismatch: got " + std::to_string(buf.itemsize) +
+            " bytes, expected " + std::to_string(expected_itemsize) + " bytes for dtype " +
+            dtype_name(expected_dtype));
+    }
+
+    // Validate all dimensions are positive
+    for (ssize_t i = 0; i < buf.ndim; ++i) {
+        if (buf.shape[i] < 0) {
+            throw std::invalid_argument(
+                "NumPy array has negative dimension at index " + std::to_string(i) +
+                ": " + std::to_string(buf.shape[i]));
+        }
+    }
+
+    // Check for contiguous memory layout (C-order)
+    // A C-contiguous array has strides where stride[i] = itemsize * product(shape[i+1:])
+    bool is_c_contiguous = true;
+    ssize_t expected_stride = buf.itemsize;
+    for (ssize_t i = buf.ndim - 1; i >= 0; --i) {
+        if (buf.shape[i] > 1 && buf.strides[i] != expected_stride) {
+            is_c_contiguous = false;
+            break;
+        }
+        expected_stride *= buf.shape[i];
+    }
+
+    if (!is_c_contiguous) {
+        throw std::invalid_argument(
+            "NumPy array must be C-contiguous. Call .copy() or np.ascontiguousarray() first.");
+    }
+
+    // Validate total size doesn't overflow
+    std::vector<int64_t> shape;
+    for (ssize_t i = 0; i < buf.ndim; ++i) {
+        shape.push_back(static_cast<int64_t>(buf.shape[i]));
+    }
+    validate_shape(shape);  // Uses safe_math overflow checking
+}
+
 // Helper to convert numpy array to Tensor
 Tensor numpy_to_tensor(py::array_t<float> arr, DType dtype, MeshLayout layout) {
     py::buffer_info buf = arr.request();
+
+    // Validate array properties at the Python boundary
+    validate_numpy_array(buf, dtype);
 
     std::vector<int64_t> shape;
     for (auto dim : buf.shape) {
         shape.push_back(static_cast<int64_t>(dim));
     }
 
-    return Tensor::from_data(buf.ptr, shape, dtype, layout);
+    // Pass the actual buffer size for validation
+    size_t buffer_size = static_cast<size_t>(buf.size) * static_cast<size_t>(buf.itemsize);
+    return Tensor::from_data(buf.ptr, shape, dtype, layout, buffer_size);
 }
 
 // Helper to convert Tensor to numpy array

@@ -61,8 +61,8 @@ Tensor Tensor::arange(int64_t start, int64_t end, int64_t step, DType dtype) {
     return Tensor(TensorImpl::arange(start, end, step, dtype));
 }
 
-Tensor Tensor::from_data(const void* data, std::vector<int64_t> shape, DType dtype, MeshLayout layout) {
-    return Tensor(TensorImpl::from_data(data, shape, dtype, layout));
+Tensor Tensor::from_data(const void* data, std::vector<int64_t> shape, DType dtype, MeshLayout layout, size_t data_size) {
+    return Tensor(TensorImpl::from_data(data, shape, dtype, layout, data_size));
 }
 
 // ============================================================================

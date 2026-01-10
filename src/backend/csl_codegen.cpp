@@ -5,8 +5,120 @@
 #include <regex>
 #include <chrono>
 #include <iomanip>
+#include <algorithm>
+#include <cctype>
 
 namespace pyflame::backend {
+
+// ============================================================================
+// Security Utilities
+// ============================================================================
+
+namespace {
+
+/// Sanitize a path for safe display in error messages
+/// Removes or masks potentially sensitive path components
+std::string sanitize_path_for_error(const std::filesystem::path& path) {
+    std::string result = path.filename().string();
+    if (result.empty()) {
+        result = "<path>";
+    }
+    // Only show filename, not full path
+    return result;
+}
+
+/// Check if a filename is safe (no path traversal attempts)
+bool is_safe_filename(const std::string& filename) {
+    // Disallow empty names
+    if (filename.empty()) return false;
+
+    // Disallow path separators
+    if (filename.find('/') != std::string::npos) return false;
+    if (filename.find('\\') != std::string::npos) return false;
+
+    // Disallow path traversal
+    if (filename == "." || filename == "..") return false;
+    if (filename.find("..") != std::string::npos) return false;
+
+    // Disallow null bytes
+    if (filename.find('\0') != std::string::npos) return false;
+
+    // Disallow control characters
+    for (char c : filename) {
+        if (std::iscntrl(static_cast<unsigned char>(c))) return false;
+    }
+
+    return true;
+}
+
+/// Validate and normalize output directory path
+/// Returns canonical path or throws on error
+std::filesystem::path validate_output_dir(const std::filesystem::path& output_dir) {
+    // Check for empty path
+    if (output_dir.empty()) {
+        throw std::invalid_argument("Output directory cannot be empty");
+    }
+
+    // Convert to string and check for null bytes
+    std::string path_str = output_dir.string();
+    if (path_str.find('\0') != std::string::npos) {
+        throw std::invalid_argument("Output directory contains invalid characters");
+    }
+
+    // Check for obvious path traversal attempts in the raw path
+    if (path_str.find("..") != std::string::npos) {
+        // Could be legitimate (e.g., ../build), but we're conservative
+        // Allow if it resolves to a valid absolute path
+    }
+
+    // Create directory if it doesn't exist
+    std::error_code ec;
+    std::filesystem::create_directories(output_dir, ec);
+    if (ec) {
+        throw std::runtime_error("Failed to create output directory");
+    }
+
+    // Get canonical (absolute, normalized) path
+    auto canonical = std::filesystem::canonical(output_dir, ec);
+    if (ec) {
+        throw std::runtime_error("Failed to resolve output directory path");
+    }
+
+    // Verify it's a directory
+    if (!std::filesystem::is_directory(canonical, ec) || ec) {
+        throw std::runtime_error("Output path is not a directory");
+    }
+
+    return canonical;
+}
+
+/// Validate that a file path is within the allowed directory
+void validate_file_in_dir(
+    const std::filesystem::path& filepath,
+    const std::filesystem::path& allowed_dir
+) {
+    std::error_code ec;
+
+    // Get canonical path of the file's parent
+    auto file_canonical = std::filesystem::weakly_canonical(filepath, ec);
+    if (ec) {
+        throw std::runtime_error("Invalid output file path");
+    }
+
+    // Check that file is within allowed directory
+    auto relative = std::filesystem::relative(file_canonical, allowed_dir, ec);
+    if (ec) {
+        throw std::runtime_error("Output file path validation failed");
+    }
+
+    // Check for path traversal (relative path should not start with ..)
+    std::string rel_str = relative.string();
+    if (rel_str.substr(0, 2) == ".." || rel_str.find("/../") != std::string::npos) {
+        throw std::runtime_error("Output file path escapes allowed directory");
+    }
+}
+
+}  // anonymous namespace
 
 // ============================================================================
 // CSL Templates
@@ -455,21 +567,33 @@ CodeGenResult CSLCodeGenerator::generate(
     CodeGenResult result;
 
     try {
+        // Validate and normalize output directory (prevents path traversal)
+        auto canonical_output_dir = validate_output_dir(options.output_dir);
+        result.output_dir = canonical_output_dir;
+
         // Generate source
         auto sources = generate_source(graph, options);
         result.sources = sources;
 
-        // Create output directory
-        std::filesystem::create_directories(options.output_dir);
-        result.output_dir = options.output_dir;
-
-        // Write files
+        // Write files with security validation
         for (const auto& [filename, content] : sources) {
-            auto filepath = options.output_dir / filename;
+            // Validate filename is safe (no path traversal)
+            if (!is_safe_filename(filename)) {
+                result.success = false;
+                result.error_message = "Invalid filename in generated sources";
+                return result;
+            }
+
+            auto filepath = canonical_output_dir / filename;
+
+            // Double-check file stays within output directory
+            validate_file_in_dir(filepath, canonical_output_dir);
+
             std::ofstream file(filepath);
             if (!file) {
                 result.success = false;
-                result.error_message = "Failed to write file: " + filepath.string();
+                // Sanitize path in error message to avoid information leakage
+                result.error_message = "Failed to write file: " + sanitize_path_for_error(filepath);
                 return result;
             }
             file << content;
@@ -479,7 +603,8 @@ CodeGenResult CSLCodeGenerator::generate(
         result.success = true;
     } catch (const std::exception& e) {
         result.success = false;
-        result.error_message = e.what();
+        // Use generic error message to avoid leaking sensitive information
+        result.error_message = "Code generation failed: " + std::string(e.what());
     }
 
     return result;

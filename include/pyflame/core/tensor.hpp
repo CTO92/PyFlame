@@ -47,7 +47,8 @@ public:
                         DType dtype = DType::Float32);
     static Tensor from_data(const void* data, std::vector<int64_t> shape,
                            DType dtype = DType::Float32,
-                           MeshLayout layout = MeshLayout::SinglePE());
+                           MeshLayout layout = MeshLayout::SinglePE(),
+                           size_t data_size = 0);  // Optional buffer size for validation
 
     // Properties
     std::vector<int64_t> shape() const;
