@@ -1,0 +1,241 @@
+# PyFlame
+
+**Native Deep Learning Framework for Cerebras WSE**
+
+> **PRE-RELEASE ALPHA 1.0**
+>
+> This software is in early development and is not yet ready for production use.
+> APIs may change without notice. Use at your own risk.
+
+PyFlame is a tensor computation library designed natively for the Cerebras Wafer-Scale Engine (WSE), featuring lazy evaluation, automatic CSL code generation, and a Python-first API.
+
+## Features
+
+- **Native WSE Design**: Built from the ground up for Cerebras architecture
+- **Lazy Evaluation**: Computation graphs are built lazily and executed on demand
+- **CSL Code Generation**: Automatic generation of optimized CSL kernels
+- **2D Mesh Layouts**: First-class support for tensor distribution across PEs
+- **Python + C++ API**: Use from Python or C++ with the same abstractions
+- **NumPy Interoperability**: Easy conversion to/from NumPy arrays
+
+## Project Status
+
+**Version:** Pre-Release Alpha 1.0
+
+**Phase 1 (Core Infrastructure)** - In Development
+
+- [x] Core tensor class with lazy evaluation
+- [x] Computation graph (IR) system
+- [x] Shape inference
+- [x] Elementwise operations (add, mul, relu, sigmoid, etc.)
+- [x] Reduction operations (sum, mean, max, min)
+- [x] Matrix multiplication
+- [x] CSL code generation framework
+- [x] Python bindings via pybind11
+- [x] CPU reference implementation
+
+## Requirements
+
+- CMake 3.18+
+- C++17 compiler (GCC 9+, Clang 10+, MSVC 2019+)
+- Python 3.8+
+- pybind11 2.10+
+- (Optional) Cerebras SDK for WSE execution
+
+## Building
+
+### Linux/macOS
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/pyflame.git
+cd pyflame
+
+# Create build directory
+mkdir build && cd build
+
+# Configure
+cmake .. -DCMAKE_BUILD_TYPE=Release
+
+# Build
+cmake --build . -j$(nproc)
+
+# Run tests
+ctest --output-on-failure
+
+# Install Python package (development mode)
+pip install -e .
+```
+
+### Windows
+
+```powershell
+# Clone and build
+git clone https://github.com/yourusername/pyflame.git
+cd pyflame
+
+mkdir build
+cd build
+
+cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake --build . --config Release
+
+ctest -C Release --output-on-failure
+```
+
+## Quick Start
+
+### Python
+
+```python
+import pyflame as pf
+
+# Create tensors
+a = pf.randn([1024, 512])
+b = pf.randn([512, 256])
+
+# Build computation graph (lazy)
+c = a @ b              # Matrix multiply
+d = pf.relu(c)         # Activation
+e = d.sum()            # Reduction
+
+# Execute
+result = pf.eval(e)
+print(result.numpy())
+
+# With explicit mesh layout for WSE
+x = pf.zeros([4096, 4096], layout=pf.MeshLayout.grid(16, 16))
+y = pf.zeros([4096, 4096], layout=pf.MeshLayout.grid(16, 16))
+z = x @ y  # Distributed across 256 PEs
+```
+
+### C++
+
+```cpp
+#include <pyflame/pyflame.hpp>
+using namespace pyflame;
+
+int main() {
+    auto a = Tensor::randn({1024, 512});
+    auto b = Tensor::randn({512, 256});
+
+    auto c = matmul(a, b);
+    auto d = relu(c);
+    auto e = d.sum();
+
+    e.eval();
+    std::cout << "Result: " << e.data<float>()[0] << "\n";
+
+    return 0;
+}
+```
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    PyFlame User API (Python/C++)            │
+│   - Tensor abstraction with lazy evaluation                │
+│   - Dataflow-aware operators                               │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│               PyFlame Intermediate Representation           │
+│   - Computation graph with shape inference                 │
+│   - Optimization passes (fusion, layout, etc.)             │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  PyFlame CSL Backend                        │
+│   - Template-based code generation                         │
+│   - PE placement and routing optimization                  │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│              CSL Runtime / Cerebras Hardware                │
+│   - 850,000+ Processing Elements                           │
+│   - 2D mesh fabric with wavelet communication              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Project Structure
+
+```
+pyflame/
+├── CMakeLists.txt           # Build configuration
+├── include/pyflame/         # C++ headers
+│   ├── core/                # Tensor, DType, Layout
+│   ├── ir/                  # Graph IR, operations
+│   └── backend/             # CSL code generation
+├── src/                     # C++ implementation
+├── python/                  # Python bindings
+│   ├── pyflame/             # Python package
+│   └── bindings.cpp         # pybind11 bindings
+├── tests/                   # Unit tests
+│   ├── cpp/                 # C++ tests (Google Test)
+│   └── python/              # Python tests (pytest)
+├── examples/                # Example programs
+│   ├── cpp/
+│   └── python/
+└── docs/                    # Design documentation
+```
+
+## Documentation
+
+Design documents are available in the [docs/](docs/) directory:
+
+- [CSL Code Generation Strategy](docs/01_csl_code_generation.md)
+- [Lazy Evaluation & Graph Building](docs/02_lazy_evaluation_graph_building.md)
+- [Memory Management & Layouts](docs/03_memory_management_layout.md)
+- [Build System Setup](docs/04_build_system.md)
+
+## API Reference
+
+### Tensor Creation
+
+| Function | Description |
+|----------|-------------|
+| `pf.zeros(shape)` | Create tensor filled with zeros |
+| `pf.ones(shape)` | Create tensor filled with ones |
+| `pf.full(shape, value)` | Create tensor filled with value |
+| `pf.randn(shape)` | Random normal distribution |
+| `pf.rand(shape)` | Random uniform [0, 1) |
+| `pf.arange(start, end)` | Range of values |
+| `pf.from_numpy(arr)` | From NumPy array |
+
+### Operations
+
+| Category | Functions |
+|----------|-----------|
+| Arithmetic | `+`, `-`, `*`, `/`, `@` (matmul) |
+| Activations | `relu`, `sigmoid`, `tanh`, `gelu`, `silu`, `softmax` |
+| Math | `abs`, `sqrt`, `exp`, `log`, `sin`, `cos` |
+| Reductions | `sum`, `mean`, `max`, `min` |
+| Shape | `reshape`, `transpose`, `squeeze`, `unsqueeze` |
+| Combination | `cat`, `stack` |
+
+### Layouts
+
+| Layout | Description |
+|--------|-------------|
+| `MeshLayout.single_pe()` | All data on one PE |
+| `MeshLayout.row_partition(n)` | Split rows across n PEs |
+| `MeshLayout.col_partition(n)` | Split columns across n PEs |
+| `MeshLayout.grid(r, c)` | 2D tiling across r×c PEs |
+
+## Contributing
+
+Contributions are welcome! Please see our contributing guidelines (coming soon).
+
+## License
+
+Apache 2.0 (planned)
+
+## Acknowledgments
+
+- Cerebras Systems for the WSE architecture and SDK
+- The PyTorch team for API inspiration
+- The JAX/XLA team for compiler architecture insights
