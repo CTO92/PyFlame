@@ -545,6 +545,122 @@ with autograd.no_grad():
 
 ---
 
+## 12. Developer Tools
+
+PyFlame includes powerful developer tools for debugging and profiling.
+
+### Profiling
+
+```python
+from pyflame.tools import Profiler
+
+# Profile your computations
+profiler = Profiler(track_memory=True)
+
+with profiler:
+    output = model(input_data)
+
+# View results
+result = profiler.get_result()
+print(result.summary())
+
+# Export for Chrome trace viewer
+profiler.export_chrome_trace("profile.json")
+```
+
+### Graph Visualization
+
+```python
+from pyflame.tools import visualize_model
+
+# Visualize model architecture
+visualize_model(model, example_input, "model_graph.svg")
+```
+
+---
+
+## 13. Model Serving
+
+Deploy models with the built-in inference server.
+
+### Quick Inference
+
+```python
+from pyflame.serving import InferenceEngine
+
+# Create optimized inference engine
+engine = InferenceEngine(model)
+engine.warmup(example_input)
+
+# Run inference
+output = engine.infer(input_data)
+
+# Get statistics
+stats = engine.get_stats()
+print(f"Avg latency: {stats.average_time_ms:.2f}ms")
+```
+
+### REST API Server
+
+```python
+from pyflame.serving import ModelServer
+
+# Start a model server
+server = ModelServer(model)
+server.start()  # Runs at http://localhost:8000
+```
+
+---
+
+## 14. Benchmarking
+
+Measure and compare model performance.
+
+```python
+from pyflame.benchmarks import benchmark
+
+# Quick benchmark
+results = benchmark(
+    model,
+    input_shape=[3, 224, 224],
+    batch_sizes=[1, 8, 32],
+    iterations=100,
+    print_results=True
+)
+```
+
+---
+
+## 15. MLOps Integrations
+
+Track experiments with popular MLOps tools.
+
+### Weights & Biases
+
+```python
+from pyflame.integrations import WandbCallback
+
+callback = WandbCallback(
+    project="my-project",
+    config={"lr": 0.001}
+)
+
+# Use with Trainer
+trainer = Trainer(model, optimizer, loss_fn, callbacks=[callback])
+trainer.fit(train_loader)
+```
+
+### MLflow
+
+```python
+from pyflame.integrations import MLflowCallback
+
+callback = MLflowCallback(experiment_name="my-experiment")
+trainer = Trainer(model, optimizer, loss_fn, callbacks=[callback])
+```
+
+---
+
 ## Next Steps
 
 - Read the [API Reference](api_reference.md) for complete documentation

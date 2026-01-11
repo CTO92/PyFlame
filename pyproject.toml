@@ -1,0 +1,268 @@
+[build-system]
+requires = [
+    "scikit-build-core>=0.8",
+    "pybind11>=2.11",
+    "numpy>=1.20",
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "pyflame"
+version = "1.0.0a1"
+description = "Native deep learning framework for Cerebras Wafer-Scale Engine"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "PyFlame Team" }
+]
+maintainers = [
+    { name = "PyFlame Team" }
+]
+keywords = [
+    "deep-learning",
+    "machine-learning",
+    "neural-network",
+    "cerebras",
+    "wafer-scale",
+    "tensor",
+    "autograd",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: C++",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.20",
+]
+
+[project.optional-dependencies]
+# Development dependencies
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=23.0",
+    "isort>=5.12",
+    "mypy>=1.0",
+    "ruff>=0.1.0",
+    "pre-commit>=3.0",
+]
+
+# Documentation
+docs = [
+    "sphinx>=6.0",
+    "sphinx-rtd-theme>=1.3",
+    "furo>=2023.0",
+    "myst-parser>=2.0",
+    "sphinx-copybutton>=0.5",
+    "sphinx-autodoc-typehints>=1.23",
+    "nbsphinx>=0.9",
+]
+
+# MLOps integrations
+mlops = [
+    "wandb>=0.15",
+    "mlflow>=2.0",
+]
+
+# ONNX support
+onnx = [
+    "onnx>=1.14",
+    "onnxruntime>=1.15",
+]
+
+# Serving dependencies
+serving = [
+    "fastapi>=0.100",
+    "uvicorn>=0.23",
+    "pydantic>=2.0",
+]
+
+# Jupyter support
+jupyter = [
+    "ipython>=8.0",
+    "jupyter>=1.0",
+    "matplotlib>=3.7",
+]
+
+# All optional dependencies
+all = [
+    "pyflame[dev,docs,mlops,onnx,serving,jupyter]",
+]
+
+[project.urls]
+Homepage = "https://github.com/pyflame/pyflame"
+Documentation = "https://pyflame.readthedocs.io"
+Repository = "https://github.com/pyflame/pyflame"
+Issues = "https://github.com/pyflame/pyflame/issues"
+Changelog = "https://github.com/pyflame/pyflame/blob/main/CHANGELOG.md"
+
+[project.scripts]
+pyflame = "pyflame.cli:main"
+
+[project.entry-points."pyflame.plugins"]
+# Placeholder for plugin discovery
+
+[tool.scikit-build]
+minimum-version = "0.8"
+build-dir = "build/{wheel_tag}"
+cmake.minimum-version = "3.20"
+cmake.build-type = "Release"
+cmake.args = [
+    "-DPYFLAME_BUILD_PYTHON=ON",
+    "-DPYFLAME_BUILD_TESTS=OFF",
+]
+wheel.packages = ["python/pyflame"]
+wheel.py-api = "cp312"
+sdist.include = [
+    "CMakeLists.txt",
+    "src/",
+    "include/",
+    "python/",
+]
+sdist.exclude = [
+    "build/",
+    ".git/",
+    "*.pyc",
+    "__pycache__/",
+]
+
+[tool.scikit-build.metadata.version]
+provider = "scikit_build_core.metadata.regex"
+input = "python/pyflame/__init__.py"
+regex = '__version__ = "(?P<value>[^"]+)"'
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "gpu: marks tests requiring GPU",
+    "integration: marks integration tests",
+]
+
+[tool.coverage.run]
+source = ["python/pyflame"]
+branch = true
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+
+[tool.black]
+line-length = 88
+target-version = ["py39", "py310", "py311", "py312"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 88
+known_first_party = ["pyflame"]
+skip_glob = ["build/*", ".venv/*"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "ARG", # flake8-unused-arguments
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501",  # line too long (handled by black)
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+    "ARG001", # unused function argument
+]
+exclude = [
+    ".eggs",
+    ".git",
+    ".ruff_cache",
+    ".venv",
+    "build",
+    "dist",
+    "__pycache__",
+]
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/*" = ["ARG"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+exclude = [
+    "build",
+    "dist",
+    ".venv",
+]
+
+[[tool.mypy.overrides]]
+module = "pyflame.*"
+disallow_untyped_defs = false
+
+[tool.cibuildwheel]
+build = ["cp39-*", "cp310-*", "cp311-*", "cp312-*"]
+skip = ["*-musllinux*", "pp*"]
+test-requires = ["pytest", "numpy"]
+test-command = "pytest {project}/tests -v --ignore={project}/tests/test_gpu.py"
+
+[tool.cibuildwheel.linux]
+manylinux-x86_64-image = "manylinux2014"
+before-all = "yum install -y cmake ninja-build"
+
+[tool.cibuildwheel.macos]
+before-all = "brew install cmake ninja"
+
+[tool.cibuildwheel.windows]
+before-all = "choco install cmake ninja -y"

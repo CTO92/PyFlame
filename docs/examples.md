@@ -1169,6 +1169,573 @@ print("Training complete!")
 
 ---
 
+## Developer Tools Examples
+
+### Profiling a Model
+
+```python
+import pyflame as pf
+from pyflame import nn
+from pyflame.tools import Profiler
+
+# Create a model
+model = nn.Sequential([
+    nn.Linear(784, 256),
+    nn.Linear(256, 128),
+    nn.Linear(128, 10)
+])
+
+# Profile with memory tracking
+profiler = Profiler(track_memory=True)
+
+with profiler:
+    for _ in range(10):
+        x = pf.randn([64, 784])
+        output = model(x)
+        pf.eval(output)
+
+# Get results
+result = profiler.get_result()
+print(result.summary())
+
+# Export to Chrome trace format (open with chrome://tracing)
+profiler.export_chrome_trace("model_profile.json")
+```
+
+### Graph Visualization
+
+```python
+import pyflame as pf
+from pyflame import nn
+from pyflame.tools import visualize_model, GraphVisualizer
+
+# Create model
+model = nn.Sequential([
+    nn.Linear(100, 50),
+    nn.Linear(50, 10)
+])
+
+# Quick visualization
+example_input = pf.randn([1, 100])
+visualize_model(model, example_input, "model_graph.svg")
+
+# Custom visualization options
+viz = GraphVisualizer(
+    graph=None,
+    show_shapes=True,
+    show_dtypes=True,
+    rankdir="LR"  # Left-to-right layout
+)
+```
+
+### Debugging with Breakpoints
+
+```python
+from pyflame.tools import PyFlameDebugger
+
+# Create debugger
+debugger = PyFlameDebugger()
+
+# Set breakpoints on specific operations
+debugger.set_breakpoint("matmul")
+debugger.set_breakpoint("relu", condition="output.max() > 10")
+
+# Watch tensors during execution
+debugger.watch("activations", lambda t: f"mean={t.mean():.4f}")
+
+with debugger:
+    output = model(input_data)
+```
+
+---
+
+## Model Serving Examples
+
+### InferenceEngine with Caching
+
+```python
+import pyflame as pf
+from pyflame import nn
+from pyflame.serving import InferenceEngine, InferenceConfig
+
+# Create model
+model = nn.Sequential([
+    nn.Linear(100, 50),
+    nn.Linear(50, 10)
+])
+model.eval()
+
+# Configure engine with caching
+config = InferenceConfig(
+    batch_size=32,
+    enable_caching=True,
+    cache_size=1000,
+    warmup_iterations=5
+)
+
+# Create engine
+engine = InferenceEngine(model, config)
+
+# Warmup
+example = pf.randn([1, 100])
+engine.warmup(example)
+
+# Run inference
+for i in range(100):
+    input_data = pf.randn([32, 100])
+    output = engine.infer(input_data)
+
+# Check statistics
+stats = engine.get_stats()
+print(f"Total requests: {stats.total_requests}")
+print(f"Average latency: {stats.average_time_ms:.2f}ms")
+print(f"Throughput: {stats.throughput:.0f} req/s")
+print(f"Cache hit rate: {stats.cache_hit_rate:.1%}")
+```
+
+### REST API Model Server
+
+```python
+from pyflame import nn
+from pyflame.serving import ModelServer, ServerConfig
+
+# Create and prepare model
+model = nn.Sequential([
+    nn.Linear(100, 50),
+    nn.Linear(50, 10)
+])
+model.eval()
+
+# Configure server
+config = ServerConfig(
+    host="0.0.0.0",
+    port=8000,
+    workers=4,
+    max_batch_size=64,
+    enable_cors=True
+)
+
+# Start server
+server = ModelServer(model, config)
+print("Starting server at http://localhost:8000")
+server.start()  # Blocking
+
+# Endpoints available:
+# POST /v1/predict - Run inference
+# GET  /v1/health  - Health check
+# GET  /v1/info    - Model info
+# GET  /v1/stats   - Server statistics
+```
+
+### Client for Remote Inference
+
+```python
+from pyflame.serving import ModelClient, ClientConfig
+import numpy as np
+
+# Configure client
+config = ClientConfig(
+    timeout=30.0,
+    max_retries=3,
+    retry_delay=1.0
+)
+
+# Create client
+client = ModelClient("http://localhost:8000", config)
+
+# Check server health
+if client.health_check():
+    print("Server is healthy")
+
+# Single prediction
+input_data = np.random.randn(1, 100).tolist()
+output = client.predict(input_data)
+print(f"Prediction: {output}")
+
+# Batch prediction
+inputs = [np.random.randn(100).tolist() for _ in range(10)]
+outputs = client.predict_batch(inputs)
+print(f"Batch outputs: {len(outputs)} predictions")
+
+# Get server info
+info = client.get_info()
+print(f"Model info: {info}")
+```
+
+---
+
+## Benchmarking Examples
+
+### Benchmark Model Performance
+
+```python
+import pyflame as pf
+from pyflame import nn
+from pyflame.benchmarks import BenchmarkRunner, BenchmarkConfig
+
+# Create model
+model = nn.Sequential([
+    nn.Linear(784, 256),
+    nn.Linear(256, 10)
+])
+
+# Configure benchmark
+config = BenchmarkConfig(
+    warmup_iterations=10,
+    benchmark_iterations=100,
+    batch_sizes=[1, 8, 32, 64, 128],
+    enable_memory_tracking=True
+)
+
+# Run benchmark
+runner = BenchmarkRunner(config)
+results = runner.run_model_benchmark(
+    name="mlp_classifier",
+    model=model,
+    input_shape=[784]
+)
+
+# Print results
+print("\nBenchmark Results:")
+print("-" * 60)
+for r in results:
+    print(f"Batch {r.batch_size:4d}: "
+          f"{r.latency_ms:8.2f}ms, "
+          f"{r.throughput:8.0f} samples/sec, "
+          f"{r.memory_mb:6.1f} MB")
+
+# Export results
+runner.export_json("benchmark_results.json")
+runner.export_csv("benchmark_results.csv")
+```
+
+### Quick Benchmark
+
+```python
+from pyflame import nn
+from pyflame.benchmarks import benchmark
+
+model = nn.Linear(1000, 100)
+
+# One-liner benchmark
+results = benchmark(
+    model,
+    input_shape=[1000],
+    batch_sizes=[1, 16, 64],
+    iterations=50,
+    print_results=True
+)
+```
+
+### Compare Benchmark Results
+
+```python
+from pyflame.benchmarks import BenchmarkReport, compare_results
+
+# Load previous benchmark
+baseline = BenchmarkReport.load_json("baseline_results.json")
+
+# Run new benchmark
+new_results = runner.run_model_benchmark("model_v2", new_model, [784])
+new_report = BenchmarkReport(name="v2", results=new_results)
+
+# Compare
+comparison = compare_results(baseline.results, new_results)
+
+print("\nPerformance Comparison:")
+for name, diff in comparison.items():
+    if diff['speedup'] > 1:
+        print(f"  {name}: {diff['speedup']:.2f}x faster")
+    else:
+        print(f"  {name}: {1/diff['speedup']:.2f}x slower")
+```
+
+### Benchmark Operations
+
+```python
+import pyflame as pf
+from pyflame.benchmarks import BenchmarkRunner
+
+runner = BenchmarkRunner()
+
+# Benchmark matrix multiplication
+result = runner.run_operation_benchmark(
+    name="matmul_1024x1024",
+    operation=lambda x, y: x @ y,
+    input_shapes=[[1024, 1024], [1024, 1024]]
+)
+
+print(f"MatMul 1024x1024: {result.latency_ms:.2f}ms")
+
+# Benchmark with timing context
+from pyflame.benchmarks import timed
+
+with timed() as t:
+    for _ in range(100):
+        x = pf.randn([256, 256])
+        y = pf.relu(x @ x)
+        pf.eval(y)
+
+print(f"100 iterations: {t.elapsed_ms:.2f}ms")
+print(f"Average: {t.elapsed_ms / 100:.2f}ms per iteration")
+```
+
+---
+
+## Integration Examples
+
+### Weights & Biases Logging
+
+```python
+import pyflame as pf
+from pyflame import nn, optim
+from pyflame.training import Trainer, TrainerConfig
+from pyflame.integrations import WandbCallback
+
+# Create model
+model = nn.Sequential([
+    nn.Linear(784, 256),
+    nn.Linear(256, 10)
+])
+
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+loss_fn = nn.CrossEntropyLoss()
+
+# Setup W&B callback
+wandb_callback = WandbCallback(
+    project="pyflame-experiments",
+    name="mlp-classifier",
+    config={
+        "architecture": "mlp",
+        "learning_rate": 0.001,
+        "batch_size": 64
+    },
+    log_model=True,
+    log_gradients=True
+)
+
+# Setup trainer with callback
+config = TrainerConfig(max_epochs=50, log_interval=10)
+trainer = Trainer(
+    model=model,
+    optimizer=optimizer,
+    loss_fn=loss_fn,
+    config=config,
+    callbacks=[wandb_callback]
+)
+
+# Train
+trainer.fit(train_loader, val_loader)
+
+# W&B run is automatically finished
+```
+
+### MLflow Experiment Tracking
+
+```python
+import pyflame as pf
+from pyflame import nn, optim
+from pyflame.training import Trainer, TrainerConfig
+from pyflame.integrations import MLflowCallback
+
+# Create model
+model = nn.Sequential([
+    nn.Linear(784, 256),
+    nn.Linear(256, 10)
+])
+
+# Setup MLflow callback
+mlflow_callback = MLflowCallback(
+    experiment_name="pyflame-experiments",
+    run_name="mlp-v1",
+    tracking_uri="http://localhost:5000",
+    log_models=True
+)
+
+# Log hyperparameters
+mlflow_callback.log_params({
+    "model_type": "mlp",
+    "hidden_size": 256,
+    "learning_rate": 0.001
+})
+
+# Train with callback
+trainer = Trainer(
+    model=model,
+    optimizer=optim.Adam(model.parameters()),
+    loss_fn=nn.CrossEntropyLoss(),
+    callbacks=[mlflow_callback]
+)
+
+trainer.fit(train_loader)
+```
+
+### ONNX Export
+
+```python
+import pyflame as pf
+from pyflame import nn
+from pyflame.integrations import ONNXExporter, export_onnx
+
+# Create model
+model = nn.Sequential([
+    nn.Linear(784, 256),
+    nn.Linear(256, 10)
+])
+model.eval()
+
+# Quick export
+example_input = pf.randn([1, 784])
+export_onnx(model, example_input, "model.onnx")
+
+# Advanced export with options
+exporter = ONNXExporter(opset_version=17)
+exporter.export(
+    model,
+    example_input,
+    "model_dynamic.onnx",
+    input_names=["image"],
+    output_names=["logits"],
+    dynamic_axes={
+        "image": {0: "batch_size"},
+        "logits": {0: "batch_size"}
+    }
+)
+
+# Verify exported model
+exporter.verify(model, example_input, "model_dynamic.onnx")
+print("ONNX export verified successfully!")
+```
+
+---
+
+## Custom Extensions Examples
+
+### Custom Operator
+
+```python
+import pyflame as pf
+from pyflame.extend import custom_op, register_custom_op
+
+# Using decorator
+@custom_op(name="swish")
+def swish(x):
+    """Swish activation: x * sigmoid(x)"""
+    return x * pf.sigmoid(x)
+
+# Use the custom op
+x = pf.randn([32, 100])
+y = swish(x)
+pf.eval(y)
+
+# With backward pass
+def mish_forward(x):
+    return x * pf.tanh(pf.softplus(x))
+
+def mish_backward(grad_output, x):
+    # Approximate gradient
+    return grad_output * pf.tanh(pf.softplus(x))
+
+register_custom_op(
+    name="mish",
+    forward_fn=mish_forward,
+    backward_fn=mish_backward
+)
+```
+
+### Custom Autograd Function
+
+```python
+from pyflame.extend import AutogradFunction, FunctionContext
+
+class Clamp(AutogradFunction):
+    """Custom clamp function with gradient."""
+
+    @staticmethod
+    def forward(ctx: FunctionContext, x, min_val, max_val):
+        ctx.save_for_backward(x)
+        ctx.min_val = min_val
+        ctx.max_val = max_val
+        return x.clamp(min_val, max_val)
+
+    @staticmethod
+    def backward(ctx: FunctionContext, grad_output):
+        x, = ctx.saved_tensors
+        # Gradient is 1 where x is within bounds, 0 otherwise
+        mask = (x >= ctx.min_val) & (x <= ctx.max_val)
+        return grad_output * mask, None, None
+
+# Use custom function
+x = pf.randn([100])
+y = Clamp.apply(x, -1.0, 1.0)
+```
+
+### Creating a Plugin
+
+```python
+from pyflame.extend import Plugin, PluginInfo, register_plugin
+
+class MyActivationsPlugin(Plugin):
+    """Plugin providing custom activation functions."""
+
+    @classmethod
+    def get_info(cls) -> PluginInfo:
+        return PluginInfo(
+            name="my-activations",
+            version="1.0.0",
+            author="Your Name",
+            description="Custom activation functions for PyFlame"
+        )
+
+    def on_load(self):
+        print("Loading custom activations...")
+        # Register custom ops when plugin loads
+        for name, fn in self.get_custom_ops().items():
+            register_custom_op(name, fn)
+
+    def on_unload(self):
+        print("Unloading custom activations...")
+
+    def get_custom_ops(self):
+        return {
+            "hard_swish": lambda x: x * pf.relu(x + 3) / 6,
+            "quick_gelu": lambda x: x * pf.sigmoid(1.702 * x)
+        }
+
+# Register and use
+register_plugin(MyActivationsPlugin)
+
+from pyflame.extend import load_plugin
+load_plugin("my-activations")
+```
+
+### Plugin Manager
+
+```python
+from pyflame.extend import PluginManager
+
+# Get plugin manager (singleton)
+manager = PluginManager()
+
+# Discover plugins in a directory
+manager.discover_plugins("./plugins")
+
+# List available plugins
+print("Available plugins:")
+for name in manager.list_plugins():
+    plugin = manager.get_plugin(name)
+    info = plugin.get_info()
+    print(f"  - {info.name} v{info.version}: {info.description}")
+
+# Load a specific plugin
+manager.load_plugin("my-activations")
+
+# Unload when done
+manager.unload_plugin("my-activations")
+```
+
+---
+
 ## Next Steps
 
 - Review the [API Reference](api_reference.md) for complete function documentation

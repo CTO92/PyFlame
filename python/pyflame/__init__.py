@@ -9,69 +9,134 @@ A tensor computation library designed natively for the Cerebras Wafer-Scale Engi
 featuring lazy evaluation, automatic CSL code generation, and Python-first API.
 """
 
-from ._pyflame_cpp import (
-    # Data types
-    DType,
-    dtype_size,
-    dtype_name,
+# Track whether C++ bindings are available
+_CPP_AVAILABLE = False
 
-    # Layout
-    PECoord,
-    MeshLayout,
+try:
+    from ._pyflame_cpp import (
+        # Data types
+        DType,
+        dtype_size,
+        dtype_name,
 
-    # Tensor class
-    Tensor,
+        # Layout
+        PECoord,
+        MeshLayout,
 
-    # Matrix operations
-    matmul,
+        # Tensor class
+        Tensor,
 
-    # Activation functions
-    relu,
-    sigmoid,
-    tanh,
-    gelu,
-    silu,
-    softmax,
-    log_softmax,
+        # Matrix operations
+        matmul,
 
-    # Elementwise math
-    abs,
-    sqrt,
-    exp,
-    log,
-    sin,
-    cos,
+        # Activation functions
+        relu,
+        sigmoid,
+        tanh,
+        gelu,
+        silu,
+        softmax,
+        log_softmax,
 
-    # Tensor combination
-    cat,
-    stack,
+        # Elementwise math
+        abs,
+        sqrt,
+        exp,
+        log,
+        sin,
+        cos,
 
-    # Graph access
-    TensorSpec,
-    Node,
-    Graph,
-    get_graph,
-    get_node,
+        # Tensor combination
+        cat,
+        stack,
 
-    # CSL code generation
-    CodeGenOptions,
-    CodeGenResult,
-    CSLCodeGenerator,
-    compile_to_csl,
-)
+        # Graph access
+        TensorSpec,
+        Node,
+        Graph,
+        get_graph,
+        get_node,
+
+        # CSL code generation
+        CodeGenOptions,
+        CodeGenResult,
+        CSLCodeGenerator,
+        compile_to_csl,
+    )
+    _CPP_AVAILABLE = True
+except ImportError:
+    # C++ bindings not built - provide placeholder types for ecosystem modules
+    # Core tensor operations will not work, but tools/integrations can be imported
+    import warnings
+    warnings.warn(
+        "PyFlame C++ bindings not found. Core tensor operations unavailable. "
+        "Install from source with 'pip install -e .' to build C++ extensions.",
+        ImportWarning,
+    )
+
+    # Placeholder types for when C++ is not available
+    DType = None
+    dtype_size = None
+    dtype_name = None
+    PECoord = None
+    MeshLayout = None
+    Tensor = None
+    matmul = None
+    relu = None
+    sigmoid = None
+    tanh = None
+    gelu = None
+    silu = None
+    softmax = None
+    log_softmax = None
+    abs = None
+    sqrt = None
+    exp = None
+    log = None
+    sin = None
+    cos = None
+    cat = None
+    stack = None
+    TensorSpec = None
+    Node = None
+    Graph = None
+    get_graph = None
+    get_node = None
+    CodeGenOptions = None
+    CodeGenResult = None
+    CSLCodeGenerator = None
+    compile_to_csl = None
 
 # Convenient dtype aliases
-float32 = DType.float32
-float16 = DType.float16
-bfloat16 = DType.bfloat16
-int32 = DType.int32
-int16 = DType.int16
-int8 = DType.int8
-bool_ = DType.bool_
+if _CPP_AVAILABLE:
+    float32 = DType.float32
+    float16 = DType.float16
+    bfloat16 = DType.bfloat16
+    int32 = DType.int32
+    int16 = DType.int16
+    int8 = DType.int8
+    bool_ = DType.bool_
+else:
+    float32 = None
+    float16 = None
+    bfloat16 = None
+    int32 = None
+    int16 = None
+    int8 = None
+    bool_ = None
+
+
+def _require_cpp(func_name: str):
+    """Raise an error if C++ bindings are not available."""
+    if not _CPP_AVAILABLE:
+        raise RuntimeError(
+            f"{func_name}() requires PyFlame C++ bindings. "
+            "Build from source with 'pip install -e .' to enable core tensor operations."
+        )
 
 
 # Factory functions with nicer API
-def zeros(shape, dtype=float32, layout=None):
+def zeros(shape, dtype=None, layout=None):
     """Create a tensor filled with zeros.
 
     Args:
@@ -87,12 +152,15 @@ def zeros(shape, dtype=float32, layout=None):
         >>> x.shape
         [3, 4]
     """
+    _require_cpp("zeros")
+    if dtype is None:
+        dtype = float32
     if layout is None:
         layout = MeshLayout.single_pe()
     return Tensor.zeros(list(shape), dtype, layout)
 
 
-def ones(shape, dtype=float32, layout=None):
+def ones(shape, dtype=None, layout=None):
     """Create a tensor filled with ones.
 
     Args:
@@ -103,12 +171,15 @@ def ones(shape, dtype=float32, layout=None):
     Returns:
         A new Tensor filled with ones.
     """
+    _require_cpp("ones")
+    if dtype is None:
+        dtype = float32
     if layout is None:
         layout = MeshLayout.single_pe()
     return Tensor.ones(list(shape), dtype, layout)
 
 
-def full(shape, value, dtype=float32, layout=None):
+def full(shape, value, dtype=None, layout=None):
     """Create a tensor filled with a scalar value.
 
     Args:
@@ -120,12 +191,15 @@ def full(shape, value, dtype=float32, layout=None):
     Returns:
         A new Tensor filled with the given value.
     """
+    _require_cpp("full")
+    if dtype is None:
+        dtype = float32
     if layout is None:
         layout = MeshLayout.single_pe()
     return Tensor.full(list(shape), float(value), dtype, layout)
 
 
-def randn(shape, dtype=float32, layout=None):
+def randn(shape, dtype=None, layout=None):
     """Create a tensor with random normal values (mean=0, std=1).
 
     Args:
@@ -136,12 +210,15 @@ def randn(shape, dtype=float32, layout=None):
     Returns:
         A new Tensor with random normal values.
     """
+    _require_cpp("randn")
+    if dtype is None:
+        dtype = float32
     if layout is None:
         layout = MeshLayout.single_pe()
     return Tensor.randn(list(shape), dtype, layout)
 
 
-def rand(shape, dtype=float32, layout=None):
+def rand(shape, dtype=None, layout=None):
     """Create a tensor with random uniform values in [0, 1).
 
     Args:
@@ -152,12 +229,15 @@ def rand(shape, dtype=float32, layout=None):
     Returns:
         A new Tensor with random uniform values.
     """
+    _require_cpp("rand")
+    if dtype is None:
+        dtype = float32
     if layout is None:
         layout = MeshLayout.single_pe()
     return Tensor.rand(list(shape), dtype, layout)
 
 
-def arange(start, end=None, step=1, dtype=float32):
+def arange(start, end=None, step=1, dtype=None):
     """Create a 1D tensor with values from start to end.
 
     Args:
@@ -174,6 +254,9 @@ def arange(start, end=None, step=1, dtype=float32):
         >>> pf.arange(1, 5)       # [1, 2, 3, 4]
         >>> pf.arange(0, 10, 2)   # [0, 2, 4, 6, 8]
     """
+    _require_cpp("arange")
+    if dtype is None:
+        dtype = float32
     if end is None:
         end = start
         start = 0
@@ -194,6 +277,7 @@ def tensor(data, dtype=None):
         >>> pf.tensor([[1, 2], [3, 4]])
         >>> pf.tensor(np.random.randn(3, 4))
     """
+    _require_cpp("tensor")
     import numpy as np
     arr = np.asarray(data, dtype=np.float32)
     return Tensor.from_numpy(arr)
@@ -208,6 +292,7 @@ def from_numpy(arr):
     Returns:
         A new Tensor containing the data.
     """
+    _require_cpp("from_numpy")
     import numpy as np
     arr = np.ascontiguousarray(arr, dtype=np.float32)
     return Tensor.from_numpy(arr)
@@ -222,6 +307,7 @@ def is_lazy(t):
     Returns:
         True if the tensor is lazy (not yet computed).
     """
+    _require_cpp("is_lazy")
     return not t.is_evaluated()
 
 
@@ -240,6 +326,7 @@ def eval(*tensors):
         >>> c = a + b  # Lazy
         >>> pf.eval(c) # Now computed
     """
+    _require_cpp("eval")
     for t in tensors:
         t.eval()
     return tensors[0] if len(tensors) == 1 else tensors
@@ -251,6 +338,7 @@ def print_graph(t):
     Args:
         t: Tensor whose graph to print.
     """
+    _require_cpp("print_graph")
     graph = get_graph(t)
     if graph:
         print(repr(graph))
@@ -289,8 +377,9 @@ __all__ = [
     # CSL
     'CodeGenOptions', 'CodeGenResult', 'CSLCodeGenerator', 'compile_to_csl',
 
-    # Version
+    # Version and availability
     '__version__',
     '__version_info__',
     '__release_status__',
+    '_CPP_AVAILABLE',
 ]
