@@ -71,5 +71,15 @@ _deps/
 Thumbs.db
 desktop.ini
 
+# Windows reserved device names (cannot be deleted as files)
+nul
+NUL
+con
+CON
+aux
+AUX
+prn
+PRN
+
 # Claude Code
 .claude/
