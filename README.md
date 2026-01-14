@@ -9,13 +9,31 @@
 
 PyFlame is a tensor computation library designed natively for the Cerebras Wafer-Scale Engine (WSE), featuring lazy evaluation, automatic CSL code generation, and a Python-first API.
 
-## Author
+## About OA Quantum Labs
 
-The PyFlame family of neural network tools were created by OA Quantum Labs. We would love to work with you on device specific developer tooling to dramatically increase performance on your hardware. Contact:
-Danny Wall, OA Quantum Labs CTO
-dwall@oaqlabs.com
+PyFlame is developed by **[OA Quantum Labs](https://oaqlabs.com)**, a specialized engineering firm focused on high-performance computing and tooling that breaks vendor lock-in.
 
-## Donations
+### What We Do
+
+In this context We help organizations unlock the full potential of specialized hardware through custom developer tools, optimized frameworks, and performance engineering:
+
+- **Custom Framework Development** — Native tooling designed for your specific accelerator architecture
+- **Performance Optimization** — Squeeze maximum throughput from your existing hardware investments
+- **Migration & Porting** — Adapt existing ML workloads to new accelerator platforms
+- **Training & Enablement** — Get your team productive on specialized hardware faster
+
+### Why Work With Us
+
+PyFlame demonstrates our approach: rather than forcing general-purpose tools onto specialized hardware, we build native solutions that leverage the unique strengths of each architecture. The result is dramatically better performance and a more intuitive developer experience.
+
+If your organization is working with specialized AI accelerators, FPGAs, or custom silicon, we'd love to discuss how purpose-built tooling could transform your development workflow.
+
+### Get In Touch
+
+**Danny Wall** — CTO, OA Quantum Labs
+[dwall@oaqlabs.com](mailto:dwall@oaqlabs.com) | [oaqlabs.com](https://oaqlabs.com)
+
+## Support the Project
 
 We welcome financial support in the effort. Learn how you can help at https://oaqlabs.com/pyflame (bottom of page)
 
@@ -364,10 +382,6 @@ Internal architecture documentation:
 ## Contributing
 
 Contributions are welcome! Please see our contributing guidelines (coming soon).
-
-## Donations
-
-We welcome financial support in the effort. Learn how you can help at https://oaqlabs.com/pyflame (bottom of page)
 
 ## License
 
