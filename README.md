@@ -9,6 +9,10 @@
 
 PyFlame is a tensor computation library designed natively for the Cerebras Wafer-Scale Engine (WSE), featuring lazy evaluation, automatic CSL code generation, and a Python-first API.
 
+## Donations
+
+We welcome financial support in the effort. Learn how you can help at https://oaqlabs.com/pyflame (bottom of page)
+
 ## Features
 
 - **Native WSE Design**: Built from the ground up for Cerebras architecture
@@ -354,6 +358,10 @@ Internal architecture documentation:
 ## Contributing
 
 Contributions are welcome! Please see our contributing guidelines (coming soon).
+
+## Donations
+
+We welcome financial support in the effort. Learn how you can help at https://oaqlabs.com/pyflame (bottom of page)
 
 ## License
 
