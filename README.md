@@ -9,6 +9,12 @@
 
 PyFlame is a tensor computation library designed natively for the Cerebras Wafer-Scale Engine (WSE), featuring lazy evaluation, automatic CSL code generation, and a Python-first API.
 
+## Author
+
+The PyFlame family of neural network tools were created by OA Quantum Labs. We would love to work with you on device specific developer tooling to dramatically increase performance on your hardware. Contact:
+Danny Wall, OA Quantum Labs CTO
+dwall@oaqlabs.com
+
 ## Donations
 
 We welcome financial support in the effort. Learn how you can help at https://oaqlabs.com/pyflame (bottom of page)
