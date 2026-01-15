@@ -4,14 +4,15 @@ Benchmark results and reporting for PyFlame.
 Provides result analysis, comparison, and visualization.
 """
 
-from typing import Any, Dict, List, Optional, Tuple
-from dataclasses import dataclass, field
 import json
+from dataclasses import dataclass, field
+from typing import Any, Dict, List
 
 
 @dataclass
 class BenchmarkResult:
     """Single benchmark result (re-exported from runner)."""
+
     name: str
     batch_size: int
     latency_ms: float
@@ -35,6 +36,7 @@ class BenchmarkReport:
         system_info: System information
         timestamp: Report timestamp
     """
+
     title: str
     results: List[BenchmarkResult]
     system_info: Dict[str, Any] = field(default_factory=dict)
@@ -44,6 +46,7 @@ class BenchmarkReport:
     def __post_init__(self):
         if not self.timestamp:
             from datetime import datetime
+
             self.timestamp = datetime.now().isoformat()
 
         if not self.system_info:
@@ -62,6 +65,7 @@ class BenchmarkReport:
 
         try:
             import psutil
+
             info["cpu_count"] = psutil.cpu_count()
             info["memory_total_gb"] = psutil.virtual_memory().total / (1024**3)
         except ImportError:
@@ -88,13 +92,15 @@ class BenchmarkReport:
         for key, value in self.system_info.items():
             lines.append(f"  {key}: {value}")
 
-        lines.extend([
-            "",
-            "Results Summary:",
-            "-" * 40,
-            f"{'Model':<25} {'Batch':<8} {'Latency (ms)':<15} {'Throughput':<15}",
-            "-" * 70,
-        ])
+        lines.extend(
+            [
+                "",
+                "Results Summary:",
+                "-" * 40,
+                f"{'Model':<25} {'Batch':<8} {'Latency (ms)':<15} {'Throughput':<15}",
+                "-" * 70,
+            ]
+        )
 
         for r in self.results:
             lines.append(
@@ -103,10 +109,12 @@ class BenchmarkReport:
                 f"{r.throughput:>10.1f}/s"
             )
 
-        lines.extend([
-            "",
-            "=" * 80,
-        ])
+        lines.extend(
+            [
+                "",
+                "=" * 80,
+            ]
+        )
 
         if self.notes:
             lines.extend(["Notes:", self.notes, ""])
@@ -276,9 +284,7 @@ class BenchmarkReport:
         with open(path, "r") as f:
             data = json.load(f)
 
-        results = [
-            BenchmarkResult(**r) for r in data.get("results", [])
-        ]
+        results = [BenchmarkResult(**r) for r in data.get("results", [])]
 
         return cls(
             title=data.get("title", "Benchmark Report"),
@@ -311,9 +317,7 @@ def compare_results(
     comparisons = {}
 
     # Index comparison results by name and batch size
-    comp_index = {
-        (r.name, r.batch_size): r for r in comparison
-    }
+    comp_index = {(r.name, r.batch_size): r for r in comparison}
 
     for base_result in baseline:
         key = (base_result.name, base_result.batch_size)

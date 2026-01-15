@@ -4,8 +4,8 @@ Weights & Biases integration for PyFlame.
 Provides experiment tracking, logging, and visualization.
 """
 
-from typing import Any, Dict, List, Optional, Union
 import os
+from typing import Any, Dict, List, Optional
 
 
 class WandbCallback:
@@ -99,7 +99,9 @@ class WandbCallback:
 
         # Log trainer config
         if hasattr(trainer, "config"):
-            config_dict = trainer.config.__dict__ if hasattr(trainer.config, "__dict__") else {}
+            config_dict = (
+                trainer.config.__dict__ if hasattr(trainer.config, "__dict__") else {}
+            )
             wandb.config.update(config_dict)
 
         # Log model architecture summary
@@ -183,6 +185,7 @@ class WandbCallback:
 
                 # Save model weights to temp file
                 import tempfile
+
                 with tempfile.NamedTemporaryFile(suffix=".pf", delete=False) as f:
                     model_path = f.name
 
@@ -210,6 +213,7 @@ class WandbCallback:
             self._init_wandb()
 
         import wandb
+
         wandb.log(data, step=step or self._step)
 
     def log_image(
@@ -268,8 +272,6 @@ class WandbCallback:
         if self._run is None:
             self._init_wandb()
 
-        import wandb
-
         # Note: Direct model watching may not be fully supported
         # This is a placeholder for future implementation
         pass
@@ -304,9 +306,7 @@ def init_wandb(
     try:
         import wandb
     except ImportError:
-        raise ImportError(
-            "wandb is required. Install with: pip install wandb"
-        )
+        raise ImportError("wandb is required. Install with: pip install wandb")
 
     return wandb.init(
         project=project,

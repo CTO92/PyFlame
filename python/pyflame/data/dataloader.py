@@ -4,16 +4,16 @@ DataLoader for PyFlame.
 Provides batching, shuffling, and parallel data loading.
 """
 
-from typing import Any, Callable, Iterator, List, Optional, Sequence, Union
 import random
 from collections.abc import Mapping
+from typing import Any, Callable, Iterator, List, Optional, Sequence, Union
 
 from .dataset import Dataset, IterableDataset
 from .sampler import (
-    Sampler,
-    RandomSampler,
-    SequentialSampler,
     BatchSampler,
+    RandomSampler,
+    Sampler,
+    SequentialSampler,
 )
 
 
@@ -48,6 +48,7 @@ def default_collate(batch: List[Any]) -> Any:
                 return elem.__class__.stack(batch, dim=0)
             # For numpy arrays
             import numpy as np
+
             return np.stack(batch, axis=0)
         except Exception:
             return batch
@@ -57,6 +58,7 @@ def default_collate(batch: List[Any]) -> Any:
         # Convert to tensor
         try:
             import numpy as np
+
             return np.array(batch)
         except ImportError:
             return batch
@@ -156,11 +158,7 @@ class DataLoader:
             else:
                 self.sampler = SequentialSampler(dataset)
 
-            self.batch_sampler = BatchSampler(
-                self.sampler,
-                batch_size,
-                drop_last
-            )
+            self.batch_sampler = BatchSampler(self.sampler, batch_size, drop_last)
 
     def __iter__(self) -> Iterator:
         """Iterate over batches."""

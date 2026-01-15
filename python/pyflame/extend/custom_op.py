@@ -4,9 +4,8 @@ Custom operator registration for PyFlame.
 Allows users to define and register custom operations.
 """
 
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass, field
-import functools
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -21,6 +20,7 @@ class CustomOp:
         schema: Operator schema definition
         doc: Documentation string
     """
+
     name: str
     forward_fn: Callable
     backward_fn: Optional[Callable] = None
@@ -101,6 +101,7 @@ def register_custom_op(
     # Try to register with C++ backend if available
     try:
         import pyflame as pf
+
         if hasattr(pf, "_register_custom_op"):
             pf._register_custom_op(name, forward_fn, backward_fn, csl_template)
     except (ImportError, AttributeError):
@@ -141,6 +142,7 @@ def custom_op(
         ... def my_gelu(x):
         ...     return x * pf.sigmoid(1.702 * x)
     """
+
     def decorator(fn: Callable) -> CustomOp:
         return register_custom_op(
             name=name,
@@ -151,6 +153,7 @@ def custom_op(
             doc=fn.__doc__ or "",
             **metadata,
         )
+
     return decorator
 
 
@@ -299,9 +302,11 @@ def _register_builtin_ops():
         """Swish/SiLU activation: x * sigmoid(x)"""
         try:
             import pyflame as pf
+
             return x * pf.sigmoid(x)
         except ImportError:
             import numpy as np
+
             return x * (1 / (1 + np.exp(-x)))
 
     # Mish activation
@@ -310,9 +315,11 @@ def _register_builtin_ops():
         """Mish activation: x * tanh(softplus(x))"""
         try:
             import pyflame as pf
+
             return x * pf.tanh(pf.log(1 + pf.exp(x)))
         except ImportError:
             import numpy as np
+
             return x * np.tanh(np.log(1 + np.exp(x)))
 
     # Hard Swish
@@ -321,9 +328,11 @@ def _register_builtin_ops():
         """Hard Swish activation: x * relu6(x + 3) / 6"""
         try:
             import pyflame as pf
+
             return x * pf.clamp(x + 3, min=0, max=6) / 6
         except ImportError:
             import numpy as np
+
             return x * np.clip(x + 3, 0, 6) / 6
 
     # GELU approximation
@@ -332,9 +341,11 @@ def _register_builtin_ops():
         """Fast GELU approximation: x * sigmoid(1.702 * x)"""
         try:
             import pyflame as pf
+
             return x * pf.sigmoid(1.702 * x)
         except ImportError:
             import numpy as np
+
             return x * (1 / (1 + np.exp(-1.702 * x)))
 
 

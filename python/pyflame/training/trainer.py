@@ -10,12 +10,12 @@ Provides a high-level training loop with support for:
 - Distributed training
 """
 
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Union
-import time
+import logging
 import os
 import pickle
-import logging
+import time
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Union
 
 from .callbacks import Callback, CallbackList
 
@@ -25,34 +25,49 @@ logger = logging.getLogger(__name__)
 class RestrictedUnpickler(pickle.Unpickler):
     """Restricted unpickler that only allows safe modules for checkpoint loading."""
 
-    SAFE_MODULES = frozenset({
-        'numpy', 'numpy.core', 'numpy.core.multiarray', 'numpy.core.numeric',
-        'numpy.random', 'numpy._core', 'numpy._core.multiarray',
-        'collections', 'builtins', 'copy', 'functools',
-        'pyflame', 'pyflame.nn', 'pyflame.tensor', 'pyflame.optim',
-    })
+    SAFE_MODULES = frozenset(
+        {
+            "numpy",
+            "numpy.core",
+            "numpy.core.multiarray",
+            "numpy.core.numeric",
+            "numpy.random",
+            "numpy._core",
+            "numpy._core.multiarray",
+            "collections",
+            "builtins",
+            "copy",
+            "functools",
+            "pyflame",
+            "pyflame.nn",
+            "pyflame.tensor",
+            "pyflame.optim",
+        }
+    )
 
-    SAFE_CLASSES = frozenset({
-        ('numpy', 'ndarray'),
-        ('numpy', 'dtype'),
-        ('numpy.core.multiarray', '_reconstruct'),
-        ('numpy._core.multiarray', '_reconstruct'),
-        ('builtins', 'dict'),
-        ('builtins', 'list'),
-        ('builtins', 'tuple'),
-        ('builtins', 'set'),
-        ('builtins', 'frozenset'),
-        ('builtins', 'bytes'),
-        ('builtins', 'bytearray'),
-        ('builtins', 'float'),
-        ('builtins', 'int'),
-        ('collections', 'OrderedDict'),
-    })
+    SAFE_CLASSES = frozenset(
+        {
+            ("numpy", "ndarray"),
+            ("numpy", "dtype"),
+            ("numpy.core.multiarray", "_reconstruct"),
+            ("numpy._core.multiarray", "_reconstruct"),
+            ("builtins", "dict"),
+            ("builtins", "list"),
+            ("builtins", "tuple"),
+            ("builtins", "set"),
+            ("builtins", "frozenset"),
+            ("builtins", "bytes"),
+            ("builtins", "bytearray"),
+            ("builtins", "float"),
+            ("builtins", "int"),
+            ("collections", "OrderedDict"),
+        }
+    )
 
     def find_class(self, module: str, name: str):
         if (module, name) in self.SAFE_CLASSES:
             return super().find_class(module, name)
-        module_base = module.split('.')[0]
+        module_base = module.split(".")[0]
         if module_base not in self.SAFE_MODULES:
             raise pickle.UnpicklingError(
                 f"Unsafe module in checkpoint: {module}.{name}"
@@ -72,7 +87,9 @@ class TrainerConfig:
     gradient_clip_algorithm: str = "norm"  # "norm" or "value"
 
     # Validation
-    val_check_interval: Union[int, float] = 1.0  # 1.0 = every epoch, 100 = every 100 steps
+    val_check_interval: Union[int, float] = (
+        1.0  # 1.0 = every epoch, 100 = every 100 steps
+    )
     limit_val_batches: Optional[int] = None
 
     # Logging
@@ -173,10 +190,12 @@ class Trainer:
     def _set_seed(self, seed: int):
         """Set random seed for reproducibility."""
         import random
+
         random.seed(seed)
 
         try:
             import numpy as np
+
             np.random.seed(seed)
         except ImportError:
             pass
@@ -269,7 +288,10 @@ class Trainer:
             self.callbacks.on_epoch_end(self)
 
             # Check max steps
-            if self.config.max_steps and self.state.global_step >= self.config.max_steps:
+            if (
+                self.config.max_steps
+                and self.state.global_step >= self.config.max_steps
+            ):
                 break
 
     def _train_epoch(self) -> Dict[str, float]:
@@ -312,7 +334,10 @@ class Trainer:
                 self._log_metrics({"train_loss": loss}, step=self.state.global_step)
 
             # Check max steps
-            if self.config.max_steps and self.state.global_step >= self.config.max_steps:
+            if (
+                self.config.max_steps
+                and self.state.global_step >= self.config.max_steps
+            ):
                 break
 
             # Fast dev run
@@ -383,8 +408,8 @@ class Trainer:
                 for p in params:
                     if hasattr(p, "grad") and p.grad is not None:
                         param_norm = p.grad.norm()
-                        total_norm += param_norm ** 2
-                total_norm = total_norm ** 0.5
+                        total_norm += param_norm**2
+                total_norm = total_norm**0.5
 
                 clip_coef = self.config.gradient_clip_val / (total_norm + 1e-6)
                 if clip_coef < 1:
@@ -398,7 +423,7 @@ class Trainer:
                     if hasattr(p, "grad") and p.grad is not None:
                         p.grad.clamp_(
                             -self.config.gradient_clip_val,
-                            self.config.gradient_clip_val
+                            self.config.gradient_clip_val,
                         )
 
     def _validate(self) -> Dict[str, float]:
@@ -427,7 +452,10 @@ class Trainer:
             self.callbacks.on_validation_batch_end(self, batch, batch_idx)
 
             # Limit validation batches
-            if self.config.limit_val_batches and batch_idx >= self.config.limit_val_batches:
+            if (
+                self.config.limit_val_batches
+                and batch_idx >= self.config.limit_val_batches
+            ):
                 break
 
             # Fast dev run
@@ -476,7 +504,7 @@ class Trainer:
         if path is None:
             path = os.path.join(
                 self.config.save_dir,
-                f"checkpoint-epoch{self.state.epoch}-step{self.state.global_step}.pt"
+                f"checkpoint-epoch{self.state.epoch}-step{self.state.global_step}.pt",
             )
 
         checkpoint = {
@@ -500,6 +528,7 @@ class Trainer:
         # Save (would use pyflame.save or torch.save)
         try:
             import pickle
+
             with open(path, "wb") as f:
                 pickle.dump(checkpoint, f)
         except Exception as e:

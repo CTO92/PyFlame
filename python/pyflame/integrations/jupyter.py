@@ -4,8 +4,8 @@ Jupyter notebook integration for PyFlame.
 Provides rich tensor display, graph visualization, and progress bars.
 """
 
-from typing import Any, Dict, Optional
 import html
+from typing import Any, Dict, Optional
 
 
 def setup_jupyter():
@@ -26,7 +26,6 @@ def setup_jupyter():
     """
     try:
         from IPython import get_ipython
-        from IPython.display import display, HTML
 
         ip = get_ipython()
         if ip is None:
@@ -50,13 +49,6 @@ def setup_jupyter():
             if hasattr(pf, "Graph"):
                 formatter.for_type(pf.Graph, _graph_to_html)
 
-        except ImportError:
-            pass
-
-        # Register generic numpy array formatter
-        try:
-            import numpy as np
-            # Don't override numpy's built-in formatting
         except ImportError:
             pass
 
@@ -88,37 +80,36 @@ def _tensor_to_html(tensor) -> str:
 
     html_parts = [
         '<div style="border: 1px solid #ddd; border-radius: 8px; padding: 12px; '
-        'font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, sans-serif; '
-        'background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%); '
+        "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; "
+        "background: linear-gradient(135deg, #f8f9fa 0%, #fff 100%); "
         'box-shadow: 0 2px 4px rgba(0,0,0,0.05);">',
-
         # Header
         '<div style="display: flex; align-items: center; margin-bottom: 10px;">',
         '<span style="font-weight: 600; color: #2c3e50; font-size: 14px;">PyFlame Tensor</span>',
         f'<span style="margin-left: auto; background: {status_color}; color: white; '
         f'padding: 2px 8px; border-radius: 4px; font-size: 11px;">{status_text}</span>',
-        '</div>',
-
+        "</div>",
         # Properties table
         '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">',
-        '<tr>',
-        f'<td style="padding: 4px 8px; color: #666;">Shape</td>',
+        "<tr>",
+        '<td style="padding: 4px 8px; color: #666;">Shape</td>',
         f'<td style="padding: 4px 8px; font-weight: 500; color: #2c3e50;">[{shape_str}]</td>',
-        '</tr>',
+        "</tr>",
         '<tr style="background: #f8f9fa;">',
-        f'<td style="padding: 4px 8px; color: #666;">DType</td>',
+        '<td style="padding: 4px 8px; color: #666;">DType</td>',
         f'<td style="padding: 4px 8px; font-weight: 500; color: #2c3e50;">{dtype_str}</td>',
-        '</tr>',
-        '<tr>',
-        f'<td style="padding: 4px 8px; color: #666;">Elements</td>',
+        "</tr>",
+        "<tr>",
+        '<td style="padding: 4px 8px; color: #666;">Elements</td>',
         f'<td style="padding: 4px 8px; font-weight: 500; color: #2c3e50;">{numel:,}</td>',
-        '</tr>',
+        "</tr>",
     ]
 
     # Add statistics if tensor is small and evaluated
     if is_evaluated and numel <= 10000:
         try:
             import numpy as np
+
             data = tensor.numpy()
 
             stats = {
@@ -128,15 +119,17 @@ def _tensor_to_html(tensor) -> str:
                 "std": float(np.std(data)),
             }
 
-            html_parts.extend([
-                '<tr style="background: #f8f9fa;">',
-                '<td style="padding: 4px 8px; color: #666;">Stats</td>',
-                f'<td style="padding: 4px 8px; font-family: monospace; font-size: 12px;">',
-                f'min={stats["min"]:.4f}, max={stats["max"]:.4f}, ',
-                f'mean={stats["mean"]:.4f}, std={stats["std"]:.4f}',
-                '</td>',
-                '</tr>',
-            ])
+            html_parts.extend(
+                [
+                    '<tr style="background: #f8f9fa;">',
+                    '<td style="padding: 4px 8px; color: #666;">Stats</td>',
+                    '<td style="padding: 4px 8px; font-family: monospace; font-size: 12px;">',
+                    f'min={stats["min"]:.4f}, max={stats["max"]:.4f}, ',
+                    f'mean={stats["mean"]:.4f}, std={stats["std"]:.4f}',
+                    "</td>",
+                    "</tr>",
+                ]
+            )
 
             # Check for NaN/Inf
             has_nan = np.isnan(data).any()
@@ -147,37 +140,44 @@ def _tensor_to_html(tensor) -> str:
                     warnings.append("NaN")
                 if has_inf:
                     warnings.append("Inf")
-                html_parts.extend([
-                    '<tr>',
-                    '<td style="padding: 4px 8px; color: #e74c3c;">Warning</td>',
-                    f'<td style="padding: 4px 8px; color: #e74c3c;">Contains {", ".join(warnings)}</td>',
-                    '</tr>',
-                ])
+                html_parts.extend(
+                    [
+                        "<tr>",
+                        '<td style="padding: 4px 8px; color: #e74c3c;">Warning</td>',
+                        f'<td style="padding: 4px 8px; color: #e74c3c;">Contains {", ".join(warnings)}</td>',
+                        "</tr>",
+                    ]
+                )
 
         except Exception:
             pass
 
-    html_parts.append('</table>')
+    html_parts.append("</table>")
 
     # Show data preview for small tensors
     if is_evaluated and numel <= 100:
         try:
             import numpy as np
+
             data = tensor.numpy()
-            data_str = np.array2string(data, precision=4, suppress_small=True, max_line_width=80)
-            html_parts.extend([
-                '<div style="margin-top: 10px; padding: 8px; background: #2c3e50; '
-                'border-radius: 4px; overflow-x: auto;">',
-                f'<pre style="margin: 0; color: #ecf0f1; font-size: 12px; '
-                f'font-family: \'Monaco\', \'Menlo\', monospace;">{html.escape(data_str)}</pre>',
-                '</div>',
-            ])
+            data_str = np.array2string(
+                data, precision=4, suppress_small=True, max_line_width=80
+            )
+            html_parts.extend(
+                [
+                    '<div style="margin-top: 10px; padding: 8px; background: #2c3e50; '
+                    'border-radius: 4px; overflow-x: auto;">',
+                    f'<pre style="margin: 0; color: #ecf0f1; font-size: 12px; '
+                    f"font-family: 'Monaco', 'Menlo', monospace;\">{html.escape(data_str)}</pre>",
+                    "</div>",
+                ]
+            )
         except Exception:
             pass
 
-    html_parts.append('</div>')
+    html_parts.append("</div>")
 
-    return ''.join(html_parts)
+    return "".join(html_parts)
 
 
 def _graph_to_html(graph) -> str:
@@ -253,15 +253,14 @@ class TensorWidget:
         """
         try:
             import matplotlib.pyplot as plt
-            import numpy as np
 
             data = self.tensor.numpy().flatten()
 
             fig, ax = plt.subplots(figsize=(8, 4))
-            ax.hist(data, bins=bins, edgecolor='white', alpha=0.7)
-            ax.set_xlabel('Value')
-            ax.set_ylabel('Count')
-            ax.set_title(f'{self.name} Value Distribution')
+            ax.hist(data, bins=bins, edgecolor="white", alpha=0.7)
+            ax.set_xlabel("Value")
+            ax.set_ylabel("Count")
+            ax.set_title(f"{self.name} Value Distribution")
             ax.grid(True, alpha=0.3)
             plt.tight_layout()
             plt.show()
@@ -279,7 +278,6 @@ class TensorWidget:
         """
         try:
             import matplotlib.pyplot as plt
-            import numpy as np
 
             data = self.tensor.numpy()
 
@@ -288,9 +286,9 @@ class TensorWidget:
                 return
 
             fig, ax = plt.subplots(figsize=(8, 6))
-            im = ax.imshow(data, cmap=cmap, aspect='auto')
+            im = ax.imshow(data, cmap=cmap, aspect="auto")
             plt.colorbar(im, ax=ax)
-            ax.set_title(f'{self.name} Heatmap')
+            ax.set_title(f"{self.name} Heatmap")
             plt.tight_layout()
             plt.show()
 
@@ -332,7 +330,8 @@ class ProgressBar:
         self._display_id = None
 
         try:
-            from IPython.display import display, HTML
+            from IPython.display import HTML, display
+
             self._display = display
             self._HTML = HTML
             self._in_jupyter = True
@@ -345,6 +344,7 @@ class ProgressBar:
         """Initialize display."""
         if self._in_jupyter:
             from IPython.display import display
+
             handle = display(self._render(), display_id=True)
             self._display_id = handle.display_id
 
@@ -365,8 +365,10 @@ class ProgressBar:
 
         metrics_str = ""
         if metrics:
-            metrics_parts = [f"{k}: {v:.4f}" if isinstance(v, float) else f"{k}: {v}"
-                           for k, v in metrics.items()]
+            metrics_parts = [
+                f"{k}: {v:.4f}" if isinstance(v, float) else f"{k}: {v}"
+                for k, v in metrics.items()
+            ]
             metrics_str = " | ".join(metrics_parts)
 
         html = f"""
@@ -396,6 +398,7 @@ class ProgressBar:
 
         if self._in_jupyter and self._display_id:
             from IPython.display import update_display
+
             update_display(self._render(metrics), display_id=self._display_id)
         else:
             # Fallback to console

@@ -4,9 +4,8 @@ ONNX integration for PyFlame.
 Provides import and export functionality for ONNX models.
 """
 
-from typing import Any, Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass
-import os
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 
 @dataclass
@@ -21,6 +20,7 @@ class ONNXExportConfig:
         do_constant_folding: Fold constants during export
         verbose: Print export information
     """
+
     opset_version: int = 17
     dynamic_axes: Optional[Dict[str, Dict[int, str]]] = None
     input_names: Optional[List[str]] = None
@@ -118,7 +118,7 @@ class ONNXExporter:
         """
         try:
             import onnx
-            from onnx import helper, TensorProto, numpy_helper
+            from onnx import TensorProto, helper, numpy_helper
         except ImportError:
             raise ImportError(
                 "ONNX is required for export. Install with: pip install onnx"
@@ -138,6 +138,7 @@ class ONNXExporter:
         # Get graph from traced output
         try:
             import pyflame as pf
+
             graph = pf.get_graph(output)
         except Exception:
             graph = None
@@ -150,7 +151,6 @@ class ONNXExporter:
         onnx_inputs = []
         onnx_outputs = []
         initializers = []
-        value_info = []
 
         # Use provided names or defaults
         input_names = input_names or self.config.input_names or ["input"]
@@ -169,7 +169,9 @@ class ONNXExporter:
                     )
                 )
         else:
-            shape = list(example_input.shape) if hasattr(example_input, "shape") else None
+            shape = (
+                list(example_input.shape) if hasattr(example_input, "shape") else None
+            )
             onnx_inputs.append(
                 helper.make_tensor_value_info(
                     input_names[0],
@@ -239,6 +241,7 @@ class ONNXExporter:
         if self.config.do_constant_folding:
             try:
                 from onnx import optimizer
+
                 onnx_model = optimizer.optimize(onnx_model)
             except ImportError:
                 pass  # Optimizer not available
@@ -301,7 +304,6 @@ class ONNXImporter:
         """
         try:
             import onnx
-            from onnx import numpy_helper
         except ImportError:
             raise ImportError(
                 "ONNX is required for import. Install with: pip install onnx"
@@ -335,20 +337,24 @@ class ONNXImporter:
         inputs = []
         for inp in onnx_model.graph.input:
             shape = [d.dim_value for d in inp.type.tensor_type.shape.dim]
-            inputs.append({
-                "name": inp.name,
-                "shape": shape,
-                "dtype": inp.type.tensor_type.elem_type,
-            })
+            inputs.append(
+                {
+                    "name": inp.name,
+                    "shape": shape,
+                    "dtype": inp.type.tensor_type.elem_type,
+                }
+            )
 
         outputs = []
         for out in onnx_model.graph.output:
             shape = [d.dim_value for d in out.type.tensor_type.shape.dim]
-            outputs.append({
-                "name": out.name,
-                "shape": shape,
-                "dtype": out.type.tensor_type.elem_type,
-            })
+            outputs.append(
+                {
+                    "name": out.name,
+                    "shape": shape,
+                    "dtype": out.type.tensor_type.elem_type,
+                }
+            )
 
         return {
             "producer": onnx_model.producer_name,
@@ -391,8 +397,7 @@ class ONNXModel:
                 )
 
             # Serialize model to bytes
-            import onnx
-            model_bytes = onnx_model.SerializeToString()
+            model_bytes = self.onnx_model.SerializeToString()
 
             self._session = ort.InferenceSession(
                 model_bytes,
@@ -429,6 +434,7 @@ class ONNXModel:
         # Convert outputs to PyFlame tensors
         try:
             import pyflame as pf
+
             outputs = [pf.tensor(out) for out in outputs]
         except Exception:
             pass

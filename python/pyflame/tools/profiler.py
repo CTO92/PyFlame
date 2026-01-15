@@ -4,18 +4,19 @@ PyFlame Profiler for performance analysis.
 Provides operation timing, memory tracking, and performance visualization.
 """
 
-from typing import Any, Callable, Dict, List, Optional, Union
-from dataclasses import dataclass, field
-from contextlib import contextmanager
-from collections import defaultdict
 import functools
-import time
 import json
+import time
+from collections import defaultdict
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional
 
 
 @dataclass
 class ProfileEvent:
     """A single profiling event."""
+
     name: str
     category: str
     start_time: float
@@ -62,6 +63,7 @@ class ProfileResult:
         operation_stats: Statistics per operation
         memory_stats: Memory usage statistics
     """
+
     events: List[ProfileEvent] = field(default_factory=list)
     total_time: float = 0.0
     operation_stats: Dict[str, Dict[str, float]] = field(default_factory=dict)
@@ -281,26 +283,31 @@ class Profiler:
             label: Label for the snapshot
         """
         try:
-            import psutil
             import os
+
+            import psutil
 
             process = psutil.Process(os.getpid())
             mem_info = process.memory_info()
 
-            self._memory_snapshots.append({
-                "label": label,
-                "time": time.perf_counter(),
-                "rss_mb": mem_info.rss / (1024 * 1024),
-                "vms_mb": mem_info.vms / (1024 * 1024),
-            })
+            self._memory_snapshots.append(
+                {
+                    "label": label,
+                    "time": time.perf_counter(),
+                    "rss_mb": mem_info.rss / (1024 * 1024),
+                    "vms_mb": mem_info.vms / (1024 * 1024),
+                }
+            )
         except ImportError:
             # psutil not available
-            self._memory_snapshots.append({
-                "label": label,
-                "time": time.perf_counter(),
-                "rss_mb": 0,
-                "vms_mb": 0,
-            })
+            self._memory_snapshots.append(
+                {
+                    "label": label,
+                    "time": time.perf_counter(),
+                    "rss_mb": 0,
+                    "vms_mb": 0,
+                }
+            )
 
     def _compute_results(self):
         """Compute profiling results from collected data."""
@@ -367,6 +374,7 @@ def profile(func: Optional[Callable] = None, **profiler_kwargs) -> Callable:
         ... def inference(model, x):
         ...     return model(x)
     """
+
     def decorator(fn: Callable) -> Callable:
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):

@@ -4,9 +4,9 @@ Dataset classes for PyFlame.
 Provides base classes and utilities for creating datasets.
 """
 
+import random
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Iterator, List, Optional, Sequence, Tuple, Union
-import random
 
 
 class Dataset(ABC):
@@ -123,7 +123,9 @@ class Subset(Dataset):
 
     def __getitem__(self, index: int) -> Any:
         if index < 0 or index >= len(self.indices):
-            raise IndexError(f"Index {index} out of range for subset of size {len(self.indices)}")
+            raise IndexError(
+                f"Index {index} out of range for subset of size {len(self.indices)}"
+            )
         return self.dataset[self.indices[index]]
 
     def __len__(self) -> int:
@@ -182,7 +184,7 @@ class ConcatDataset(Dataset):
 def random_split(
     dataset: Dataset,
     lengths: List[Union[int, float]],
-    generator: Optional[random.Random] = None
+    generator: Optional[random.Random] = None,
 ) -> List[Subset]:
     """
     Randomly split a dataset into non-overlapping subsets.
@@ -206,12 +208,12 @@ def random_split(
     total_length = len(dataset)
 
     # Convert fractions to lengths
-    if all(isinstance(l, float) for l in lengths):
+    if all(isinstance(frac, float) for frac in lengths):
         if abs(sum(lengths) - 1.0) > 1e-6:
             raise ValueError("Fractions must sum to 1.0")
         int_lengths = []
         remaining = total_length
-        for i, frac in enumerate(lengths[:-1]):
+        for _, frac in enumerate(lengths[:-1]):
             length = int(frac * total_length)
             int_lengths.append(length)
             remaining -= length
@@ -231,7 +233,7 @@ def random_split(
     subsets = []
     offset = 0
     for length in lengths:
-        subset_indices = indices[offset:offset + length]
+        subset_indices = indices[offset : offset + length]
         subsets.append(Subset(dataset, subset_indices))
         offset += length
 

@@ -4,8 +4,8 @@ MLflow integration for PyFlame.
 Provides experiment tracking, model logging, and artifact management.
 """
 
-from typing import Any, Dict, List, Optional, Union
 import os
+from typing import Any, Dict, Optional
 
 
 class MLflowCallback:
@@ -175,8 +175,9 @@ class MLflowCallback:
         # Log final model
         if self.log_models and hasattr(trainer, "model"):
             try:
-                import pyflame as pf
                 import tempfile
+
+                import pyflame as pf
 
                 # Save model to temp file
                 with tempfile.NamedTemporaryFile(suffix=".pf", delete=False) as f:
@@ -207,6 +208,7 @@ class MLflowCallback:
             self._init_mlflow()
 
         import mlflow
+
         mlflow.log_metric(key, value, step=step or self._step)
 
     def log_metrics(self, metrics: Dict[str, float], step: Optional[int] = None):
@@ -220,6 +222,7 @@ class MLflowCallback:
             self._init_mlflow()
 
         import mlflow
+
         mlflow.log_metrics(metrics, step=step or self._step)
 
     def log_params(self, params: Dict[str, Any]):
@@ -254,6 +257,7 @@ class MLflowCallback:
             self._init_mlflow()
 
         import mlflow
+
         mlflow.log_artifact(local_path, artifact_path)
 
     def set_tag(self, key: str, value: str):
@@ -267,6 +271,7 @@ class MLflowCallback:
             self._init_mlflow()
 
         import mlflow
+
         mlflow.set_tag(key, value)
 
 
@@ -299,9 +304,7 @@ def init_mlflow(
     try:
         import mlflow
     except ImportError:
-        raise ImportError(
-            "mlflow is required. Install with: pip install mlflow"
-        )
+        raise ImportError("mlflow is required. Install with: pip install mlflow")
 
     if tracking_uri:
         mlflow.set_tracking_uri(tracking_uri)
@@ -360,6 +363,7 @@ class PyFlameMLflowModel:
         # Convert to PyFlame tensor
         try:
             import pyflame as pf
+
             input_tensor = pf.tensor(input_array)
         except Exception:
             input_tensor = input_array
@@ -380,6 +384,7 @@ class PyFlameMLflowModel:
             path: Save path
         """
         import pyflame as pf
+
         pf.save(self.model.state_dict(), os.path.join(path, "model.pf"))
 
     @classmethod

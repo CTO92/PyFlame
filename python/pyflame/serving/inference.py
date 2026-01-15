@@ -4,11 +4,11 @@ Optimized inference engine for PyFlame models.
 Provides production-ready inference with batching, caching, and optimization.
 """
 
-from typing import Any, Callable, Dict, List, Optional, Union
-from dataclasses import dataclass, field
-from collections import OrderedDict
-import time
 import threading
+import time
+from collections import OrderedDict
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Union
 
 
 @dataclass
@@ -23,6 +23,7 @@ class InferenceConfig:
         timeout_ms: Inference timeout in milliseconds
         num_threads: Number of inference threads
     """
+
     max_batch_size: int = 32
     enable_caching: bool = False
     cache_size: int = 1000
@@ -41,6 +42,7 @@ class InferenceStats:
         cache_hits: Number of cache hits
         cache_misses: Number of cache misses
     """
+
     total_inferences: int = 0
     total_time_ms: float = 0.0
     cache_hits: int = 0
@@ -247,6 +249,7 @@ class InferenceEngine:
 
         try:
             import pyflame as pf
+
             with pf.no_grad() if hasattr(pf, "no_grad") else nullcontext():
                 if isinstance(inputs, (list, tuple)):
                     outputs = self.model(*inputs)
@@ -300,7 +303,7 @@ class InferenceEngine:
             import pyflame as pf
 
             for i in range(0, len(inputs), batch_size):
-                batch = inputs[i:i + batch_size]
+                batch = inputs[i : i + batch_size]
                 batched_input = pf.stack(batch, dim=0)
                 batch_output = self.infer(batched_input)
 

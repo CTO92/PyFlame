@@ -13,61 +13,46 @@ featuring lazy evaluation, automatic CSL code generation, and Python-first API.
 _CPP_AVAILABLE = False
 
 try:
-    from ._pyflame_cpp import (
-        # Data types
-        DType,
-        dtype_size,
-        dtype_name,
-
-        # Layout
-        PECoord,
-        MeshLayout,
-
-        # Tensor class
-        Tensor,
-
-        # Matrix operations
-        matmul,
-
-        # Activation functions
-        relu,
-        sigmoid,
-        tanh,
-        gelu,
-        silu,
-        softmax,
-        log_softmax,
-
-        # Elementwise math
-        abs,
-        sqrt,
-        exp,
-        log,
-        sin,
-        cos,
-
-        # Tensor combination
-        cat,
-        stack,
-
-        # Graph access
-        TensorSpec,
-        Node,
-        Graph,
-        get_graph,
-        get_node,
-
-        # CSL code generation
+    from ._pyflame_cpp import (  # CSL code generation; Data types; Layout; Tensor class; Graph access; Elementwise math; Tensor combination; Matrix operations; Activation functions
         CodeGenOptions,
         CodeGenResult,
         CSLCodeGenerator,
+        DType,
+        Graph,
+        MeshLayout,
+        Node,
+        PECoord,
+        Tensor,
+        TensorSpec,
+        abs,
+        cat,
         compile_to_csl,
+        cos,
+        dtype_name,
+        dtype_size,
+        exp,
+        gelu,
+        get_graph,
+        get_node,
+        log,
+        log_softmax,
+        matmul,
+        relu,
+        sigmoid,
+        silu,
+        sin,
+        softmax,
+        sqrt,
+        stack,
+        tanh,
     )
+
     _CPP_AVAILABLE = True
 except ImportError:
     # C++ bindings not built - provide placeholder types for ecosystem modules
     # Core tensor operations will not work, but tools/integrations can be imported
     import warnings
+
     warnings.warn(
         "PyFlame C++ bindings not found. Core tensor operations unavailable. "
         "Install from source with 'pip install -e .' to build C++ extensions.",
@@ -279,6 +264,7 @@ def tensor(data, dtype=None):
     """
     _require_cpp("tensor")
     import numpy as np
+
     arr = np.asarray(data, dtype=np.float32)
     return Tensor.from_numpy(arr)
 
@@ -294,6 +280,7 @@ def from_numpy(arr):
     """
     _require_cpp("from_numpy")
     import numpy as np
+
     arr = np.ascontiguousarray(arr, dtype=np.float32)
     return Tensor.from_numpy(arr)
 
@@ -357,29 +344,63 @@ __release_status__ = "Pre-Release Alpha"
 
 __all__ = [
     # Types
-    'DType', 'PECoord', 'MeshLayout', 'Tensor',
-    'TensorSpec', 'Node', 'Graph',
-
+    "DType",
+    "PECoord",
+    "MeshLayout",
+    "Tensor",
+    "TensorSpec",
+    "Node",
+    "Graph",
     # Dtype aliases
-    'float32', 'float16', 'bfloat16', 'int32', 'int16', 'int8', 'bool_',
-
+    "float32",
+    "float16",
+    "bfloat16",
+    "int32",
+    "int16",
+    "int8",
+    "bool_",
     # Factory functions
-    'zeros', 'ones', 'full', 'randn', 'rand', 'arange', 'tensor', 'from_numpy',
-
+    "zeros",
+    "ones",
+    "full",
+    "randn",
+    "rand",
+    "arange",
+    "tensor",
+    "from_numpy",
     # Operations
-    'matmul', 'relu', 'sigmoid', 'tanh', 'gelu', 'silu', 'softmax', 'log_softmax',
-    'abs', 'sqrt', 'exp', 'log', 'sin', 'cos', 'cat', 'stack',
-
+    "matmul",
+    "relu",
+    "sigmoid",
+    "tanh",
+    "gelu",
+    "silu",
+    "softmax",
+    "log_softmax",
+    "abs",
+    "sqrt",
+    "exp",
+    "log",
+    "sin",
+    "cos",
+    "cat",
+    "stack",
     # Utilities
-    'is_lazy', 'eval', 'print_graph', 'get_graph', 'get_node',
-    'dtype_size', 'dtype_name',
-
+    "is_lazy",
+    "eval",
+    "print_graph",
+    "get_graph",
+    "get_node",
+    "dtype_size",
+    "dtype_name",
     # CSL
-    'CodeGenOptions', 'CodeGenResult', 'CSLCodeGenerator', 'compile_to_csl',
-
+    "CodeGenOptions",
+    "CodeGenResult",
+    "CSLCodeGenerator",
+    "compile_to_csl",
     # Version and availability
-    '__version__',
-    '__version_info__',
-    '__release_status__',
-    '_CPP_AVAILABLE',
+    "__version__",
+    "__version_info__",
+    "__release_status__",
+    "_CPP_AVAILABLE",
 ]

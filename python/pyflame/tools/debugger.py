@@ -4,15 +4,15 @@ PyFlame Debugger for inspecting tensors and computation graphs.
 Provides breakpoints, tensor inspection, and step-by-step execution.
 """
 
-from typing import Any, Callable, Dict, List, Optional, Set, Union
-from dataclasses import dataclass, field
-from enum import Enum
 import functools
-import sys
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any, Callable, Dict, List, Optional
 
 
 class BreakpointType(Enum):
     """Type of breakpoint."""
+
     OPERATION = "operation"
     TENSOR_SHAPE = "tensor_shape"
     TENSOR_VALUE = "tensor_value"
@@ -32,6 +32,7 @@ class Breakpoint:
         hit_count: Number of times breakpoint was hit
         callback: Optional callback when hit
     """
+
     id: int
     type: BreakpointType
     condition: Optional[Callable[..., bool]] = None
@@ -71,7 +72,9 @@ class TensorInspector:
         info = {
             "shape": list(tensor.shape) if hasattr(tensor, "shape") else None,
             "dtype": str(tensor.dtype) if hasattr(tensor, "dtype") else None,
-            "is_evaluated": tensor.is_evaluated() if hasattr(tensor, "is_evaluated") else None,
+            "is_evaluated": (
+                tensor.is_evaluated() if hasattr(tensor, "is_evaluated") else None
+            ),
             "numel": tensor.numel if hasattr(tensor, "numel") else None,
         }
 
@@ -93,7 +96,9 @@ class TensorInspector:
         return info
 
     @staticmethod
-    def compare(tensor1, tensor2, rtol: float = 1e-5, atol: float = 1e-8) -> Dict[str, Any]:
+    def compare(
+        tensor1, tensor2, rtol: float = 1e-5, atol: float = 1e-8
+    ) -> Dict[str, Any]:
         """Compare two tensors.
 
         Args:
@@ -114,8 +119,16 @@ class TensorInspector:
             return {
                 "shapes_match": arr1.shape == arr2.shape,
                 "all_close": bool(np.allclose(arr1, arr2, rtol=rtol, atol=atol)),
-                "max_diff": float(np.abs(arr1 - arr2).max()) if arr1.shape == arr2.shape else None,
-                "mean_diff": float(np.abs(arr1 - arr2).mean()) if arr1.shape == arr2.shape else None,
+                "max_diff": (
+                    float(np.abs(arr1 - arr2).max())
+                    if arr1.shape == arr2.shape
+                    else None
+                ),
+                "mean_diff": (
+                    float(np.abs(arr1 - arr2).mean())
+                    if arr1.shape == arr2.shape
+                    else None
+                ),
             }
         except Exception as e:
             return {"error": str(e)}
@@ -372,10 +385,12 @@ class PyFlameDebugger:
         if bp.callback:
             bp.callback(context)
 
-        self.history.append({
-            "breakpoint_id": bp.id,
-            "context": context.copy(),
-        })
+        self.history.append(
+            {
+                "breakpoint_id": bp.id,
+                "context": context.copy(),
+            }
+        )
 
 
 # Global debugger functions
@@ -442,6 +457,7 @@ def debug_op(func: Callable) -> Callable:
         ... def my_operation(x, y):
         ...     return x + y
     """
+
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         debugger = PyFlameDebugger.get_active()

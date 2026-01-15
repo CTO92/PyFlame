@@ -4,12 +4,12 @@ Model serving server for PyFlame.
 Provides HTTP/REST API for model inference.
 """
 
-from typing import Any, Callable, Dict, List, Optional, Union
-from dataclasses import dataclass
-from collections import defaultdict
 import json
-import time
 import logging
+import time
+from collections import defaultdict
+from dataclasses import dataclass
+from typing import Callable, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ class ServerConfig:
         ssl_certfile: Path to SSL certificate file
         ssl_keyfile: Path to SSL key file
     """
+
     host: str = "0.0.0.0"
     port: int = 8000
     workers: int = 1
@@ -93,10 +94,9 @@ class ModelServer:
     def _create_app(self):
         """Create FastAPI application with security features."""
         try:
-            from fastapi import FastAPI, HTTPException, Request, Depends
+            from fastapi import Depends, FastAPI, HTTPException, Request
             from fastapi.middleware.cors import CORSMiddleware
             from fastapi.security import APIKeyHeader
-            from fastapi.responses import JSONResponse
             from pydantic import BaseModel
             from starlette.middleware.base import BaseHTTPMiddleware
         except ImportError:
@@ -105,7 +105,7 @@ class ModelServer:
                 "Install with: pip install fastapi uvicorn"
             )
 
-        from .inference import InferenceEngine, InferenceConfig
+        from .inference import InferenceConfig, InferenceEngine
 
         app = FastAPI(
             title="PyFlame Model Server",
@@ -152,8 +152,7 @@ class ModelServer:
             if self.config.api_key is not None:
                 if api_key != self.config.api_key:
                     raise HTTPException(
-                        status_code=401,
-                        detail="Invalid or missing API key"
+                        status_code=401, detail="Invalid or missing API key"
                     )
             return api_key
 
@@ -165,14 +164,12 @@ class ModelServer:
             current_time = time.time()
             # Clean old entries
             rate_limit_state[client_ip] = [
-                t for t in rate_limit_state[client_ip]
-                if current_time - t < 60
+                t for t in rate_limit_state[client_ip] if current_time - t < 60
             ]
             if len(rate_limit_state[client_ip]) >= self.config.rate_limit_per_minute:
                 logger.warning(f"Rate limit exceeded for {client_ip}")
                 raise HTTPException(
-                    status_code=429,
-                    detail="Rate limit exceeded. Try again later."
+                    status_code=429, detail="Rate limit exceeded. Try again later."
                 )
             rate_limit_state[client_ip].append(current_time)
 
@@ -228,7 +225,7 @@ class ModelServer:
                 if len(request.inputs) > self.config.max_batch_size:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"Batch size {len(request.inputs)} exceeds maximum {self.config.max_batch_size}"
+                        detail=f"Batch size {len(request.inputs)} exceeds maximum {self.config.max_batch_size}",
                     )
 
                 # Convert inputs
@@ -239,14 +236,14 @@ class ModelServer:
                 if input_size_mb > self.config.max_input_size_mb:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"Input size {input_size_mb:.1f}MB exceeds maximum {self.config.max_input_size_mb}MB"
+                        detail=f"Input size {input_size_mb:.1f}MB exceeds maximum {self.config.max_input_size_mb}MB",
                     )
 
                 # Check for invalid values
                 if np.any(np.isnan(inputs)) or np.any(np.isinf(inputs)):
                     raise HTTPException(
                         status_code=400,
-                        detail="Input contains invalid values (NaN or Inf)"
+                        detail="Input contains invalid values (NaN or Inf)",
                     )
 
                 # Apply preprocessing if defined
@@ -256,6 +253,7 @@ class ModelServer:
                 # Convert to PyFlame tensor
                 try:
                     import pyflame as pf
+
                     inputs = pf.tensor(inputs)
                 except Exception:
                     pass
@@ -273,7 +271,9 @@ class ModelServer:
                 outputs = np.asarray(outputs).tolist()
 
                 # Log successful request
-                logger.debug(f"Prediction from {req.client.host}: {input_size_mb:.2f}MB, {inference_time:.2f}ms")
+                logger.debug(
+                    f"Prediction from {req.client.host}: {input_size_mb:.2f}MB, {inference_time:.2f}ms"
+                )
 
                 return PredictResponse(
                     outputs=outputs if isinstance(outputs[0], list) else [outputs],
@@ -284,7 +284,9 @@ class ModelServer:
                 raise  # Re-raise HTTP exceptions as-is
             except Exception as e:
                 # Log the full error internally but return generic message
-                logger.error(f"Prediction error from {req.client.host}: {e}", exc_info=True)
+                logger.error(
+                    f"Prediction error from {req.client.host}: {e}", exc_info=True
+                )
                 raise HTTPException(status_code=500, detail="Inference failed")
 
         @app.get(f"{prefix}/stats", response_model=StatsResponse)
@@ -306,8 +308,7 @@ class ModelServer:
             # Limit iterations to prevent DoS
             if iterations < 1 or iterations > 100:
                 raise HTTPException(
-                    status_code=400,
-                    detail="Iterations must be between 1 and 100"
+                    status_code=400, detail="Iterations must be between 1 and 100"
                 )
             try:
                 import numpy as np
@@ -317,6 +318,7 @@ class ModelServer:
 
                 try:
                     import pyflame as pf
+
                     dummy_input = pf.tensor(dummy_input)
                 except Exception:
                     pass
@@ -347,8 +349,7 @@ class ModelServer:
             import uvicorn
         except ImportError:
             raise ImportError(
-                "uvicorn is required for serving. "
-                "Install with: pip install uvicorn"
+                "uvicorn is required for serving. " "Install with: pip install uvicorn"
             )
 
         if self._app is None:
@@ -468,8 +469,7 @@ class SimpleModelServer:
 
     def serve(self):
         """Start the server."""
-        from http.server import HTTPServer, BaseHTTPRequestHandler
-        import json
+        from http.server import BaseHTTPRequestHandler, HTTPServer
 
         model = self.model
 
@@ -497,6 +497,7 @@ class SimpleModelServer:
 
                         try:
                             import pyflame as pf
+
                             inputs = pf.tensor(inputs)
                         except Exception:
                             pass

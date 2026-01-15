@@ -4,32 +4,37 @@ Plugin system for PyFlame extensions.
 Allows third-party packages to extend PyFlame functionality.
 """
 
-from typing import Any, Callable, Dict, List, Optional, Type
-from dataclasses import dataclass, field
-from abc import ABC, abstractmethod
 import importlib
-import sys
-import os
 import logging
+import os
+import sys
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional, Type
 
 logger = logging.getLogger(__name__)
 
 # Security: Whitelist of allowed plugin module prefixes
 # Plugins must be from these namespaces to be dynamically loaded
-ALLOWED_PLUGIN_PREFIXES = frozenset({
-    'pyflame.',
-    'pyflame_',
-    'pyflame_plugins.',
-})
+ALLOWED_PLUGIN_PREFIXES = frozenset(
+    {
+        "pyflame.",
+        "pyflame_",
+        "pyflame_plugins.",
+    }
+)
 
 # Environment variable to add additional allowed prefixes (comma-separated)
-_extra_prefixes = os.environ.get('PYFLAME_ALLOWED_PLUGIN_PREFIXES', '')
+_extra_prefixes = os.environ.get("PYFLAME_ALLOWED_PLUGIN_PREFIXES", "")
 if _extra_prefixes:
-    ALLOWED_PLUGIN_PREFIXES = ALLOWED_PLUGIN_PREFIXES | frozenset(_extra_prefixes.split(','))
+    ALLOWED_PLUGIN_PREFIXES = ALLOWED_PLUGIN_PREFIXES | frozenset(
+        _extra_prefixes.split(",")
+    )
 
 
 class SecurityError(Exception):
     """Raised when a security check fails."""
+
     pass
 
 
@@ -45,6 +50,7 @@ class PluginInfo:
         dependencies: Required plugin dependencies
         tags: Plugin tags
     """
+
     name: str
     version: str = "0.0.0"
     description: str = ""
@@ -241,6 +247,7 @@ class PluginManager:
         # Register custom operators
         for op_name, op_fn in plugin.get_custom_ops().items():
             from .custom_op import register_custom_op
+
             try:
                 register_custom_op(f"{plugin.name}.{op_name}", op_fn)
             except ValueError:
@@ -462,9 +469,11 @@ def discover_plugins() -> List[str]:
     try:
         if sys.version_info >= (3, 10):
             from importlib.metadata import entry_points
+
             eps = entry_points(group="pyflame.plugins")
         else:
             from importlib.metadata import entry_points
+
             eps = entry_points().get("pyflame.plugins", [])
 
         for ep in eps:

@@ -4,9 +4,9 @@ Samplers for PyFlame DataLoader.
 Provides various sampling strategies for data loading.
 """
 
+import random
 from abc import ABC, abstractmethod
 from typing import Iterator, List, Optional, Sized
-import random
 
 
 class Sampler(ABC):
@@ -95,7 +95,7 @@ class RandomSampler(Sampler):
             # Shuffle indices
             indices = list(range(n))
             self.generator.shuffle(indices)
-            yield from indices[:self.num_samples]
+            yield from indices[: self.num_samples]
 
     def __len__(self) -> int:
         return self.num_samples
@@ -188,7 +188,9 @@ class WeightedRandomSampler(Sampler):
 
             for _ in range(self.num_samples):
                 # Renormalize remaining probabilities
-                total_remaining = sum(remaining_probs[i] for i in indices if i not in selected)
+                total_remaining = sum(
+                    remaining_probs[i] for i in indices if i not in selected
+                )
                 if total_remaining <= 0:
                     break
 
@@ -318,7 +320,7 @@ class DistributedSampler(Sampler):
             indices = indices + indices[:padding]
 
         # Subsample for this rank
-        indices = indices[self.rank:self.total_size:self.num_replicas]
+        indices = indices[self.rank : self.total_size : self.num_replicas]
 
         return iter(indices)
 

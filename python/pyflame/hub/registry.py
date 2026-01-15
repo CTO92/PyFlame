@@ -5,8 +5,7 @@ Provides a centralized registry for model architectures.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Type, Union
-import functools
+from typing import Any, Callable, Dict, List, Optional, Union
 
 
 @dataclass
@@ -74,6 +73,7 @@ class ModelRegistry:
             ... def resnet50(**kwargs):
             ...     return ResNet50(**kwargs)
         """
+
         def decorator(constructor: Callable) -> Callable:
             info = ModelInfo(
                 name=name,
@@ -96,12 +96,7 @@ class ModelRegistry:
 
         return decorator
 
-    def get(
-        self,
-        name: str,
-        pretrained: Union[bool, str] = False,
-        **kwargs
-    ) -> Any:
+    def get(self, name: str, pretrained: Union[bool, str] = False, **kwargs) -> Any:
         """
         Get a model instance by name.
 
@@ -142,6 +137,7 @@ class ModelRegistry:
     def _load_pretrained(self, model: Any, model_name: str, weight_name: str) -> None:
         """Load pretrained weights into model."""
         from .pretrained import load_pretrained
+
         load_pretrained(model, model_name, weight_name)
 
     def list(self, tag: Optional[str] = None) -> List[str]:
@@ -157,10 +153,7 @@ class ModelRegistry:
         if tag is None:
             return sorted(self._models.keys())
 
-        return sorted(
-            name for name, info in self._models.items()
-            if tag in info.tags
-        )
+        return sorted(name for name, info in self._models.items() if tag in info.tags)
 
     def info(self, name: str) -> ModelInfo:
         """
@@ -234,11 +227,7 @@ def register_model(
     )
 
 
-def get_model(
-    name: str,
-    pretrained: Union[bool, str] = False,
-    **kwargs
-) -> Any:
+def get_model(name: str, pretrained: Union[bool, str] = False, **kwargs) -> Any:
     """
     Get a model from the global registry.
 
@@ -292,6 +281,7 @@ def model_info(name: str) -> ModelInfo:
 # =============================================================================
 # Register Built-in Models
 # =============================================================================
+
 
 @register_model(
     name="resnet18",

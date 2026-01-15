@@ -4,14 +4,12 @@ Callbacks for PyFlame Trainer.
 Provides hooks into the training loop for custom behavior.
 """
 
-from abc import ABC
-from typing import Any, Callable, Dict, List, Optional, Union
 import os
 import time
-import json
+from typing import Any, Dict, List, Optional
 
 
-class Callback(ABC):
+class Callback:
     """
     Base class for all callbacks.
 
@@ -59,7 +57,9 @@ class Callback(ABC):
         """Called when validation ends."""
         pass
 
-    def on_validation_batch_start(self, trainer: Any, batch: Any, batch_idx: int) -> None:
+    def on_validation_batch_start(
+        self, trainer: Any, batch: Any, batch_idx: int
+    ) -> None:
         """Called before processing a validation batch."""
         pass
 
@@ -121,7 +121,9 @@ class CallbackList:
         for cb in self.callbacks:
             cb.on_validation_end(trainer)
 
-    def on_validation_batch_start(self, trainer: Any, batch: Any, batch_idx: int) -> None:
+    def on_validation_batch_start(
+        self, trainer: Any, batch: Any, batch_idx: int
+    ) -> None:
         for cb in self.callbacks:
             cb.on_validation_batch_start(trainer, batch, batch_idx)
 
@@ -247,10 +249,7 @@ class ModelCheckpoint(Callback):
         current = trainer.state.logs.get(self.monitor)
 
         # Generate filename
-        filepath = os.path.join(
-            self.dirpath,
-            self._format_filename(trainer)
-        )
+        filepath = os.path.join(self.dirpath, self._format_filename(trainer))
 
         # Save last checkpoint
         if self.save_last:
@@ -390,19 +389,22 @@ class ProgressBar(Callback):
 
                 # Print progress
                 print(
-                    f"\r[{bar}] {batch_idx + 1}/{total_batches} - "
-                    f"loss: {loss:.4f}",
-                    end=""
+                    f"\r[{bar}] {batch_idx + 1}/{total_batches} - " f"loss: {loss:.4f}",
+                    end="",
                 )
             except TypeError:
                 # If len() not supported
-                print(f"\rBatch {batch_idx + 1} - loss: {trainer.state.logs.get('train_loss', 0.0):.4f}", end="")
+                print(
+                    f"\rBatch {batch_idx + 1} - loss: {trainer.state.logs.get('train_loss', 0.0):.4f}",
+                    end="",
+                )
 
     def on_epoch_end(self, trainer: Any) -> None:
         if self.epoch_start_time:
             elapsed = time.time() - self.epoch_start_time
             metrics_str = " - ".join(
-                f"{k}: {v:.4f}" for k, v in trainer.state.logs.items()
+                f"{k}: {v:.4f}"
+                for k, v in trainer.state.logs.items()
                 if isinstance(v, (int, float))
             )
             print(f"\nEpoch completed in {elapsed:.1f}s - {metrics_str}")
@@ -431,6 +433,7 @@ class TensorBoardLogger(Callback):
     def on_fit_start(self, trainer: Any) -> None:
         try:
             from torch.utils.tensorboard import SummaryWriter
+
             self.writer = SummaryWriter(self.log_dir)
         except ImportError:
             print("TensorBoard not available. Install with: pip install tensorboard")
@@ -478,7 +481,9 @@ class CSVLogger(Callback):
         self.save_dir = save_dir
         self.name = name
         self.version = version or ""
-        self.filepath = os.path.join(save_dir, f"{name}_{version}.csv" if version else f"{name}.csv")
+        self.filepath = os.path.join(
+            save_dir, f"{name}_{version}.csv" if version else f"{name}.csv"
+        )
         self.metrics_history: List[Dict] = []
 
         os.makedirs(save_dir, exist_ok=True)
@@ -567,6 +572,7 @@ class StochasticWeightAveraging(Callback):
             # Deep copy model weights
             if hasattr(trainer.model, "state_dict"):
                 import copy
+
                 self.swa_model = copy.deepcopy(trainer.model.state_dict())
                 self.n_averaged = 1
         else:

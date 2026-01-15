@@ -8,17 +8,17 @@ Provides training utilities:
 - Early stopping
 """
 
-from .trainer import Trainer, TrainerConfig
 from .callbacks import (
     Callback,
     CallbackList,
+    CSVLogger,
     EarlyStopping,
-    ModelCheckpoint,
     LearningRateScheduler,
+    ModelCheckpoint,
     ProgressBar,
     TensorBoardLogger,
-    CSVLogger,
 )
+from .trainer import Trainer, TrainerConfig
 
 __all__ = [
     "Trainer",

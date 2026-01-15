@@ -4,10 +4,9 @@ Data transforms for PyFlame.
 Provides composable transforms for data preprocessing and augmentation.
 """
 
+import random
 from abc import ABC, abstractmethod
 from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
-import random
-import math
 
 
 class Transform(ABC):
@@ -77,6 +76,7 @@ class Lambda(Transform):
 # Tensor Transforms
 # =============================================================================
 
+
 class ToTensor(Transform):
     """
     Convert data to PyFlame tensor.
@@ -99,6 +99,7 @@ class ToTensor(Transform):
         except ImportError:
             # Fallback: try numpy
             import numpy as np
+
             return np.array(data)
 
 
@@ -173,6 +174,7 @@ class StandardScaler(Transform):
             self.std_ = data.std(dim=self.dim, keepdim=True)
         else:
             import numpy as np
+
             self.mean_ = np.mean(data, axis=self.dim, keepdims=True)
             self.std_ = np.std(data, axis=self.dim, keepdims=True)
         return self
@@ -203,6 +205,7 @@ class MinMaxScaler(Transform):
             self.max_ = data.max()
         else:
             import numpy as np
+
             self.min_ = np.min(data)
             self.max_ = np.max(data)
         return self
@@ -222,6 +225,7 @@ class MinMaxScaler(Transform):
 # =============================================================================
 # Image Transforms
 # =============================================================================
+
 
 class Resize(Transform):
     """
@@ -352,8 +356,8 @@ class RandomRotation(Transform):
             self.degrees = degrees
 
     def __call__(self, img: Any) -> Any:
-        angle = random.uniform(*self.degrees)
-        # Placeholder: would apply rotation
+        _angle = random.uniform(*self.degrees)  # noqa: F841
+        # Placeholder: would apply rotation using _angle
         return img
 
 
@@ -420,6 +424,7 @@ class RandomErasing(Transform):
 # Text Transforms
 # =============================================================================
 
+
 class Tokenize(Transform):
     """
     Tokenize text into tokens.
@@ -470,6 +475,7 @@ class StripWhitespace(Transform):
 # =============================================================================
 # Audio Transforms
 # =============================================================================
+
 
 class Spectrogram(Transform):
     """
@@ -527,6 +533,7 @@ class MelSpectrogram(Transform):
 # =============================================================================
 # Random Apply
 # =============================================================================
+
 
 class RandomApply(Transform):
     """

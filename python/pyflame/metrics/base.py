@@ -4,9 +4,9 @@ Base classes for PyFlame metrics.
 Provides the Metric base class and MetricCollection.
 """
 
+import copy
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Union
-import copy
 
 
 class Metric(ABC):

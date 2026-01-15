@@ -204,23 +204,6 @@ skip_glob = ["build/*", ".venv/*"]
 [tool.ruff]
 line-length = 88
 target-version = "py39"
-select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # pyflakes
-    "I",   # isort
-    "B",   # flake8-bugbear
-    "C4",  # flake8-comprehensions
-    "UP",  # pyupgrade
-    "ARG", # flake8-unused-arguments
-    "SIM", # flake8-simplify
-]
-ignore = [
-    "E501",  # line too long (handled by black)
-    "B008",  # do not perform function calls in argument defaults
-    "C901",  # too complex
-    "ARG001", # unused function argument
-]
 exclude = [
     ".eggs",
     ".git",
@@ -231,9 +214,27 @@ exclude = [
     "__pycache__",
 ]
 
-[tool.ruff.per-file-ignores]
-"__init__.py" = ["F401"]
-"tests/*" = ["ARG"]
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+]
+ignore = [
+    "E501",   # line too long (handled by black)
+    "B008",   # do not perform function calls in argument defaults
+    "C901",   # too complex
+    "B904",   # raise-without-from-inside-except
+    "B027",   # empty-method-without-abstract-decorator
+    "B028",   # no-explicit-stacklevel
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "F403"]
+"tests/*" = ["F401", "F841"]
 
 [tool.mypy]
 python_version = "3.9"

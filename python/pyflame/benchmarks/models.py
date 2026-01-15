@@ -4,8 +4,8 @@ Benchmark models for PyFlame.
 Provides standard models for benchmarking and comparison.
 """
 
-from typing import Any, Dict, List, Optional, Type
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -20,6 +20,7 @@ class BenchmarkModelInfo:
         flops: Estimated FLOPs
         category: Model category
     """
+
     name: str
     description: str
     input_shape: List[int]
@@ -179,6 +180,7 @@ def _create_resnet18(num_classes: int = 1000, **kwargs):
     """Create ResNet-18 model."""
     try:
         from pyflame.models import resnet18
+
         return resnet18(num_classes=num_classes, **kwargs)
     except ImportError:
         return _create_mock_model("resnet18", [3, 224, 224], num_classes)
@@ -188,6 +190,7 @@ def _create_resnet50(num_classes: int = 1000, **kwargs):
     """Create ResNet-50 model."""
     try:
         from pyflame.models import resnet50
+
         return resnet50(num_classes=num_classes, **kwargs)
     except ImportError:
         return _create_mock_model("resnet50", [3, 224, 224], num_classes)
@@ -197,6 +200,7 @@ def _create_bert_base(num_classes: int = 2, **kwargs):
     """Create BERT Base model."""
     try:
         from pyflame.models import BertConfig, BertForSequenceClassification
+
         config = BertConfig(vocab_size=30522, num_classes=num_classes)
         return BertForSequenceClassification(config)
     except ImportError:
@@ -263,8 +267,8 @@ def _create_conv_small(num_classes: int = 10, **kwargs):
 def _create_transformer_encoder(num_classes: int = 10, **kwargs):
     """Create Transformer Encoder model."""
     try:
-        from pyflame.models import TransformerEncoder, TransformerEncoderLayer
         import pyflame.nn as nn
+        from pyflame.models import TransformerEncoder, TransformerEncoderLayer
 
         encoder_layer = TransformerEncoderLayer(d_model=512, nhead=8)
         encoder = TransformerEncoder(encoder_layer, num_layers=6)

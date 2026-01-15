@@ -4,8 +4,9 @@ Regression metrics for PyFlame.
 Provides metrics for evaluating regression models.
 """
 
-from typing import Any, Optional
 import math
+from typing import Any, Optional
+
 from .base import Metric
 
 
@@ -168,7 +169,7 @@ class R2Score(Metric):
 
         self._state["sum_squared_error"] += float(((target - preds) ** 2).sum())
         self._state["sum_target"] += float(target.sum())
-        self._state["sum_target_squared"] += float((target ** 2).sum())
+        self._state["sum_target_squared"] += float((target**2).sum())
         self._state["total"] += len(target)
 
     def compute(self) -> float:
@@ -180,7 +181,7 @@ class R2Score(Metric):
 
         # SS_tot = sum((y - mean(y))^2) = sum(y^2) - n * mean(y)^2
         mean_target = self._state["sum_target"] / n
-        ss_tot = self._state["sum_target_squared"] - n * (mean_target ** 2)
+        ss_tot = self._state["sum_target_squared"] - n * (mean_target**2)
 
         if ss_tot == 0:
             return 0.0
@@ -278,9 +279,9 @@ class ExplainedVariance(Metric):
         error = target - preds
 
         self._state["sum_error"] += float(error.sum())
-        self._state["sum_error_squared"] += float((error ** 2).sum())
+        self._state["sum_error_squared"] += float((error**2).sum())
         self._state["sum_target"] += float(target.sum())
-        self._state["sum_target_squared"] += float((target ** 2).sum())
+        self._state["sum_target_squared"] += float((target**2).sum())
         self._state["total"] += len(preds)
 
     def compute(self) -> float:
@@ -290,11 +291,11 @@ class ExplainedVariance(Metric):
 
         # Variance of error = E[error^2] - E[error]^2
         mean_error = self._state["sum_error"] / n
-        var_error = self._state["sum_error_squared"] / n - mean_error ** 2
+        var_error = self._state["sum_error_squared"] / n - mean_error**2
 
         # Variance of target
         mean_target = self._state["sum_target"] / n
-        var_target = self._state["sum_target_squared"] / n - mean_target ** 2
+        var_target = self._state["sum_target_squared"] / n - mean_target**2
 
         if var_target == 0:
             return 0.0
@@ -341,8 +342,8 @@ class PearsonCorrelation(Metric):
         self._state["sum_x"] += float(preds.sum())
         self._state["sum_y"] += float(target.sum())
         self._state["sum_xy"] += float((preds * target).sum())
-        self._state["sum_x_squared"] += float((preds ** 2).sum())
-        self._state["sum_y_squared"] += float((target ** 2).sum())
+        self._state["sum_x_squared"] += float((preds**2).sum())
+        self._state["sum_y_squared"] += float((target**2).sum())
         self._state["total"] += len(preds)
 
     def compute(self) -> float:
@@ -358,9 +359,7 @@ class PearsonCorrelation(Metric):
 
         # Pearson correlation formula
         numerator = n * sum_xy - sum_x * sum_y
-        denominator = math.sqrt(
-            (n * sum_x2 - sum_x ** 2) * (n * sum_y2 - sum_y ** 2)
-        )
+        denominator = math.sqrt((n * sum_x2 - sum_x**2) * (n * sum_y2 - sum_y**2))
 
         if denominator == 0:
             return 0.0

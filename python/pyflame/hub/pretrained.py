@@ -4,18 +4,16 @@ Pretrained weight management for PyFlame.
 Provides functionality for downloading, caching, and loading pretrained weights.
 """
 
-import os
 import hashlib
-import json
-import pickle
-import ssl
 import logging
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Union
-from pathlib import Path
-import urllib.request
-import urllib.error
+import os
+import pickle
 import shutil
+import ssl
+import urllib.error
+import urllib.request
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -230,7 +228,7 @@ def _download_file(
             url,
             headers={
                 "User-Agent": "PyFlame/1.0",  # Identify ourselves
-            }
+            },
         )
 
         with urllib.request.urlopen(
@@ -259,8 +257,8 @@ def _download_file(
     except ssl.SSLError as e:
         logger.error(f"SSL certificate verification failed for {url}: {e}")
         raise RuntimeError(
-            f"SSL certificate verification failed. "
-            f"The server's certificate may be invalid or expired."
+            "SSL certificate verification failed. "
+            "The server's certificate may be invalid or expired."
         )
     except urllib.error.URLError as e:
         logger.error(f"Network error downloading {url}: {e}")
@@ -346,28 +344,42 @@ class RestrictedUnpickler(pickle.Unpickler):
     """Restricted unpickler that only allows safe modules."""
 
     # Modules that are safe to unpickle
-    SAFE_MODULES = frozenset({
-        'numpy', 'numpy.core', 'numpy.core.multiarray', 'numpy.core.numeric',
-        'numpy.random', 'numpy._core', 'numpy._core.multiarray',
-        'collections', 'builtins', 'copy', 'functools',
-        'pyflame', 'pyflame.nn', 'pyflame.tensor',
-    })
+    SAFE_MODULES = frozenset(
+        {
+            "numpy",
+            "numpy.core",
+            "numpy.core.multiarray",
+            "numpy.core.numeric",
+            "numpy.random",
+            "numpy._core",
+            "numpy._core.multiarray",
+            "collections",
+            "builtins",
+            "copy",
+            "functools",
+            "pyflame",
+            "pyflame.nn",
+            "pyflame.tensor",
+        }
+    )
 
     # Classes that are explicitly allowed
-    SAFE_CLASSES = frozenset({
-        ('numpy', 'ndarray'),
-        ('numpy', 'dtype'),
-        ('numpy.core.multiarray', '_reconstruct'),
-        ('numpy._core.multiarray', '_reconstruct'),
-        ('builtins', 'dict'),
-        ('builtins', 'list'),
-        ('builtins', 'tuple'),
-        ('builtins', 'set'),
-        ('builtins', 'frozenset'),
-        ('builtins', 'bytes'),
-        ('builtins', 'bytearray'),
-        ('collections', 'OrderedDict'),
-    })
+    SAFE_CLASSES = frozenset(
+        {
+            ("numpy", "ndarray"),
+            ("numpy", "dtype"),
+            ("numpy.core.multiarray", "_reconstruct"),
+            ("numpy._core.multiarray", "_reconstruct"),
+            ("builtins", "dict"),
+            ("builtins", "list"),
+            ("builtins", "tuple"),
+            ("builtins", "set"),
+            ("builtins", "frozenset"),
+            ("builtins", "bytes"),
+            ("builtins", "bytearray"),
+            ("collections", "OrderedDict"),
+        }
+    )
 
     def find_class(self, module: str, name: str):
         """Only allow safe modules and classes to be unpickled."""
@@ -376,7 +388,7 @@ class RestrictedUnpickler(pickle.Unpickler):
             return super().find_class(module, name)
 
         # Check if module is in safe modules
-        module_base = module.split('.')[0]
+        module_base = module.split(".")[0]
         if module_base not in self.SAFE_MODULES:
             raise pickle.UnpicklingError(
                 f"Unsafe module in model file: {module}.{name}. "
@@ -393,6 +405,7 @@ def _load_state_dict(path: str) -> Dict[str, Any]:
     from malicious model files.
     """
     import pickle
+
     with open(path, "rb") as f:
         try:
             return RestrictedUnpickler(f).load()
@@ -447,10 +460,7 @@ def list_pretrained(model_name: Optional[str] = None) -> Dict[str, List[str]]:
             return {}
         return {model_name: list(_weight_registry[model_name].keys())}
 
-    return {
-        model: list(weights.keys())
-        for model, weights in _weight_registry.items()
-    }
+    return {model: list(weights.keys()) for model, weights in _weight_registry.items()}
 
 
 def weight_info(model_name: str, weight_name: str = "default") -> WeightInfo:
@@ -536,10 +546,12 @@ def cache_info() -> Dict[str, Any]:
                     weight_path = os.path.join(model_dir, weight_file)
                     size = os.path.getsize(weight_path)
                     total_size += size
-                    weights.append({
-                        "name": weight_file[:-3],  # Remove .pf
-                        "size_mb": size / (1024 * 1024),
-                    })
+                    weights.append(
+                        {
+                            "name": weight_file[:-3],  # Remove .pf
+                            "size_mb": size / (1024 * 1024),
+                        }
+                    )
             info["cached_models"][model_name] = weights
 
     info["size_mb"] = total_size / (1024 * 1024)

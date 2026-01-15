@@ -8,22 +8,22 @@ Provides evaluation metrics for machine learning:
 - NLP metrics (BLEU, perplexity)
 """
 
+from .base import Metric, MetricCollection
 from .classification import (
+    AUROC,
     Accuracy,
+    AveragePrecision,
+    ConfusionMatrix,
+    F1Score,
     Precision,
     Recall,
-    F1Score,
-    ConfusionMatrix,
-    AUROC,
-    AveragePrecision,
 )
 from .regression import (
-    MeanSquaredError,
     MeanAbsoluteError,
-    RootMeanSquaredError,
+    MeanSquaredError,
     R2Score,
+    RootMeanSquaredError,
 )
-from .base import Metric, MetricCollection
 
 __all__ = [
     # Base

@@ -4,9 +4,9 @@ Model client for PyFlame serving.
 Provides HTTP client for calling PyFlame model servers.
 """
 
-from typing import Any, Dict, List, Optional, Union
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Union
 
 
 @dataclass
@@ -19,6 +19,7 @@ class ClientConfig:
         api_prefix: API route prefix
         headers: Additional headers
     """
+
     base_url: str = "http://localhost:8000"
     timeout: int = 30
     api_prefix: str = "/v1"
@@ -59,6 +60,7 @@ class ModelClient:
         if self._session is None:
             try:
                 import requests
+
                 self._session = requests.Session()
                 if self.config.headers:
                     self._session.headers.update(self.config.headers)
@@ -226,8 +228,8 @@ class ModelClient:
         Returns:
             Response data
         """
-        import urllib.request
         import urllib.error
+        import urllib.request
 
         url = self._build_url(endpoint)
 
@@ -243,7 +245,9 @@ class ModelClient:
             request = urllib.request.Request(url, method=method)
 
         try:
-            with urllib.request.urlopen(request, timeout=self.config.timeout) as response:
+            with urllib.request.urlopen(
+                request, timeout=self.config.timeout
+            ) as response:
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             raise RuntimeError(f"HTTP error {e.code}: {e.reason}")

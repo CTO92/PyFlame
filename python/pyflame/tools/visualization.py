@@ -4,12 +4,11 @@ PyFlame Graph Visualization tools.
 Provides computation graph visualization and export capabilities.
 """
 
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
-from dataclasses import dataclass
-from io import StringIO
 import html
-import re
 import logging
+import re
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +22,7 @@ GRAPHVIZ_TIMEOUT = 60
 @dataclass
 class NodeStyle:
     """Style configuration for graph nodes."""
+
     fill_color: str = "#4a90d9"
     border_color: str = "#2c5aa0"
     text_color: str = "#ffffff"
@@ -33,6 +33,7 @@ class NodeStyle:
 @dataclass
 class EdgeStyle:
     """Style configuration for graph edges."""
+
     color: str = "#666666"
     width: float = 1.0
     style: str = "solid"  # solid, dashed, dotted
@@ -52,16 +53,16 @@ class GraphVisualizer:
 
     # Node colors by operation category
     OP_COLORS = {
-        "input": "#6ab04c",      # Green
-        "output": "#e17055",     # Red
-        "matmul": "#4a90d9",     # Blue
-        "conv": "#4a90d9",       # Blue
+        "input": "#6ab04c",  # Green
+        "output": "#e17055",  # Red
+        "matmul": "#4a90d9",  # Blue
+        "conv": "#4a90d9",  # Blue
         "activation": "#f9ca24",  # Yellow
-        "norm": "#9b59b6",       # Purple
-        "pool": "#1abc9c",       # Teal
-        "loss": "#e74c3c",       # Red
-        "elementwise": "#95a5a6", # Gray
-        "default": "#34495e",    # Dark gray
+        "norm": "#9b59b6",  # Purple
+        "pool": "#1abc9c",  # Teal
+        "loss": "#e74c3c",  # Red
+        "elementwise": "#95a5a6",  # Gray
+        "default": "#34495e",  # Dark gray
     }
 
     def __init__(
@@ -114,9 +115,13 @@ class GraphVisualizer:
             return "matmul"
         if "conv" in op_lower:
             return "conv"
-        if any(act in op_lower for act in ["relu", "sigmoid", "tanh", "gelu", "softmax"]):
+        if any(
+            act in op_lower for act in ["relu", "sigmoid", "tanh", "gelu", "softmax"]
+        ):
             return "activation"
-        if any(norm in op_lower for norm in ["norm", "bn", "ln", "layernorm", "batchnorm"]):
+        if any(
+            norm in op_lower for norm in ["norm", "bn", "ln", "layernorm", "batchnorm"]
+        ):
             return "norm"
         if "pool" in op_lower:
             return "pool"
@@ -175,35 +180,45 @@ class GraphVisualizer:
                         continue
                     visited.add(node_id)
 
-                    op_name = node.op if hasattr(node, "op") else str(type(node).__name__)
+                    op_name = (
+                        node.op if hasattr(node, "op") else str(type(node).__name__)
+                    )
                     shape = node.shape if hasattr(node, "shape") else None
                     dtype = node.dtype if hasattr(node, "dtype") else None
 
-                    self._nodes.append({
-                        "id": node_id,
-                        "op": op_name,
-                        "shape": shape,
-                        "dtype": dtype,
-                    })
+                    self._nodes.append(
+                        {
+                            "id": node_id,
+                            "op": op_name,
+                            "shape": shape,
+                            "dtype": dtype,
+                        }
+                    )
 
                     # Get edges from inputs
                     if hasattr(node, "inputs"):
                         for input_node in node.inputs:
-                            input_id = id(input_node) if not hasattr(input_node, "id") else input_node.id
+                            input_id = (
+                                id(input_node)
+                                if not hasattr(input_node, "id")
+                                else input_node.id
+                            )
                             self._edges.append((input_id, node_id, ""))
 
                     node_count += 1
 
             elif hasattr(self.graph, "get_nodes"):
                 nodes = self.graph.get_nodes()
-                for node in nodes[:self.max_nodes]:
+                for node in nodes[: self.max_nodes]:
                     node_id = node.id if hasattr(node, "id") else id(node)
-                    self._nodes.append({
-                        "id": node_id,
-                        "op": getattr(node, "op", "unknown"),
-                        "shape": getattr(node, "shape", None),
-                        "dtype": getattr(node, "dtype", None),
-                    })
+                    self._nodes.append(
+                        {
+                            "id": node_id,
+                            "op": getattr(node, "op", "unknown"),
+                            "shape": getattr(node, "shape", None),
+                            "dtype": getattr(node, "dtype", None),
+                        }
+                    )
 
         except Exception:
             # Fallback for unknown graph format
@@ -221,11 +236,11 @@ class GraphVisualizer:
         self._build_graph_data()
 
         lines = [
-            f'digraph PyFlameGraph {{',
-            f'    rankdir={self.rankdir};',
-            f'    node [shape=box, style=filled, fontname="Arial", fontsize=10];',
-            f'    edge [fontname="Arial", fontsize=9];',
-            '',
+            "digraph PyFlameGraph {",
+            f"    rankdir={self.rankdir};",
+            '    node [shape=box, style=filled, fontname="Arial", fontsize=10];',
+            '    edge [fontname="Arial", fontsize=9];',
+            "",
         ]
 
         # Add nodes
@@ -247,19 +262,19 @@ class GraphVisualizer:
                 f'fontcolor="white"];'
             )
 
-        lines.append('')
+        lines.append("")
 
         # Add edges
         for src, dst, label in self._edges:
-            edge_label = f' [label="{label}"]' if label else ''
-            lines.append(f'    node_{src} -> node_{dst}{edge_label};')
+            edge_label = f' [label="{label}"]' if label else ""
+            lines.append(f"    node_{src} -> node_{dst}{edge_label};")
 
-        lines.append('}')
+        lines.append("}")
 
-        dot_string = '\n'.join(lines)
+        dot_string = "\n".join(lines)
 
         if path:
-            with open(path, 'w') as f:
+            with open(path, "w") as f:
                 f.write(dot_string)
 
         return dot_string
@@ -283,18 +298,22 @@ class GraphVisualizer:
         # Remove potentially dangerous attributes that could cause issues
         # Graphviz supports URL/href attributes that could be exploited
         dangerous_patterns = [
-            r'URL\s*=',
-            r'href\s*=',
-            r'target\s*=',
-            r'onclick\s*=',
-            r'onmouseover\s*=',
-            r'<script',
-            r'javascript:',
+            r"URL\s*=",
+            r"href\s*=",
+            r"target\s*=",
+            r"onclick\s*=",
+            r"onmouseover\s*=",
+            r"<script",
+            r"javascript:",
         ]
         for pattern in dangerous_patterns:
             if re.search(pattern, dot_string, re.IGNORECASE):
-                logger.warning(f"Removed potentially dangerous pattern from DOT: {pattern}")
-                dot_string = re.sub(pattern + r'[^;,\]]*', '', dot_string, flags=re.IGNORECASE)
+                logger.warning(
+                    f"Removed potentially dangerous pattern from DOT: {pattern}"
+                )
+                dot_string = re.sub(
+                    pattern + r"[^;,\]]*", "", dot_string, flags=re.IGNORECASE
+                )
 
         return dot_string
 
@@ -328,7 +347,7 @@ class GraphVisualizer:
             svg_string = result.stdout
 
             if path:
-                with open(path, 'w') as f:
+                with open(path, "w") as f:
                     f.write(svg_string)
 
             return svg_string
@@ -495,7 +514,7 @@ class GraphVisualizer:
 </html>"""
 
         if path:
-            with open(path, 'w') as f:
+            with open(path, "w") as f:
                 f.write(html_content)
 
         return html_content
@@ -564,6 +583,7 @@ def visualize_model(
     # Get graph from output
     try:
         import pyflame as pf
+
         graph = pf.get_graph(output)
     except Exception:
         graph = None

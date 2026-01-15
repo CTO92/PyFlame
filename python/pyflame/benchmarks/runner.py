@@ -4,12 +4,12 @@ Benchmark runner for PyFlame.
 Provides systematic benchmarking of models and operations.
 """
 
-from typing import Any, Callable, Dict, List, Optional, Union
-from dataclasses import dataclass, field
-from contextlib import contextmanager
-import time
-import statistics
 import json
+import statistics
+import time
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional
 
 
 @dataclass
@@ -24,6 +24,7 @@ class BenchmarkConfig:
         profile_memory: Track memory usage
         device: Device to run on
     """
+
     warmup_iterations: int = 10
     benchmark_iterations: int = 100
     batch_sizes: List[int] = field(default_factory=lambda: [1, 8, 32, 64])
@@ -48,6 +49,7 @@ class BenchmarkResult:
         percentile_95_ms: 95th percentile latency
         percentile_99_ms: 99th percentile latency
     """
+
     name: str
     batch_size: int
     latency_ms: float
@@ -125,9 +127,7 @@ class BenchmarkRunner:
             model.eval()
 
         for batch_size in batch_sizes:
-            result = self._benchmark_batch_size(
-                name, model, input_shape, batch_size
-            )
+            result = self._benchmark_batch_size(name, model, input_shape, batch_size)
             results.append(result)
             self.results.append(result)
 
@@ -246,10 +246,14 @@ class BenchmarkRunner:
         """
         try:
             import pyflame as pf
+
             inputs = [pf.randn(shape) for shape in input_shapes]
         except ImportError:
             import numpy as np
-            inputs = [np.random.randn(*shape).astype(np.float32) for shape in input_shapes]
+
+            inputs = [
+                np.random.randn(*shape).astype(np.float32) for shape in input_shapes
+            ]
 
         # Warmup
         for _ in range(self.config.warmup_iterations):
@@ -284,8 +288,10 @@ class BenchmarkRunner:
     def _get_memory_usage(self) -> float:
         """Get current memory usage in MB."""
         try:
-            import psutil
             import os
+
+            import psutil
+
             process = psutil.Process(os.getpid())
             return process.memory_info().rss / (1024 * 1024)
         except ImportError:
@@ -351,17 +357,35 @@ class BenchmarkRunner:
 
         with open(path, "w", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow([
-                "name", "batch_size", "latency_ms", "std_dev_ms",
-                "throughput", "memory_mb", "min_ms", "max_ms",
-                "percentile_95_ms", "percentile_99_ms"
-            ])
+            writer.writerow(
+                [
+                    "name",
+                    "batch_size",
+                    "latency_ms",
+                    "std_dev_ms",
+                    "throughput",
+                    "memory_mb",
+                    "min_ms",
+                    "max_ms",
+                    "percentile_95_ms",
+                    "percentile_99_ms",
+                ]
+            )
             for r in self.results:
-                writer.writerow([
-                    r.name, r.batch_size, r.latency_ms, r.std_dev_ms,
-                    r.throughput, r.memory_mb, r.min_ms, r.max_ms,
-                    r.percentile_95_ms, r.percentile_99_ms
-                ])
+                writer.writerow(
+                    [
+                        r.name,
+                        r.batch_size,
+                        r.latency_ms,
+                        r.std_dev_ms,
+                        r.throughput,
+                        r.memory_mb,
+                        r.min_ms,
+                        r.max_ms,
+                        r.percentile_95_ms,
+                        r.percentile_99_ms,
+                    ]
+                )
 
     def clear_results(self):
         """Clear all stored results."""
@@ -371,7 +395,7 @@ class BenchmarkRunner:
 def benchmark(
     model,
     input_shape: List[int],
-    batch_sizes: List[int] = [1, 8, 32],
+    batch_sizes: Optional[List[int]] = None,
     iterations: int = 100,
     print_results: bool = True,
 ) -> List[BenchmarkResult]:
@@ -392,6 +416,8 @@ def benchmark(
     Example:
         >>> results = benchmark(model, [3, 224, 224])
     """
+    if batch_sizes is None:
+        batch_sizes = [1, 8, 32]
     config = BenchmarkConfig(
         benchmark_iterations=iterations,
         batch_sizes=batch_sizes,

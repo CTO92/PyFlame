@@ -7,18 +7,18 @@ Provides model registry and pretrained model loading:
 - Model cards with metadata
 """
 
+from .pretrained import (
+    download_weights,
+    get_weight_path,
+    list_pretrained,
+    load_pretrained,
+)
 from .registry import (
     ModelRegistry,
-    register_model,
     get_model,
     list_models,
     model_info,
-)
-from .pretrained import (
-    load_pretrained,
-    download_weights,
-    list_pretrained,
-    get_weight_path,
+    register_model,
 )
 
 __all__ = [

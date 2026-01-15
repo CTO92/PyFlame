@@ -4,15 +4,15 @@ PyFlame Integrations Module.
 Provides integrations with third-party tools and platforms.
 """
 
+from .jupyter import TensorWidget, setup_jupyter
+from .mlflow import MLflowCallback, init_mlflow
 from .onnx import (
-    export_onnx,
-    import_onnx,
     ONNXExporter,
     ONNXImporter,
+    export_onnx,
+    import_onnx,
 )
 from .wandb import WandbCallback, init_wandb
-from .mlflow import MLflowCallback, init_mlflow
-from .jupyter import setup_jupyter, TensorWidget
 
 __all__ = [
     # ONNX
@@ -20,15 +20,12 @@ __all__ = [
     "import_onnx",
     "ONNXExporter",
     "ONNXImporter",
-
     # Weights & Biases
     "WandbCallback",
     "init_wandb",
-
     # MLflow
     "MLflowCallback",
     "init_mlflow",
-
     # Jupyter
     "setup_jupyter",
     "TensorWidget",

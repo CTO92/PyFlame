@@ -4,8 +4,8 @@ Classification metrics for PyFlame.
 Provides metrics for evaluating classification models.
 """
 
-from typing import Any, List, Optional, Union
-import math
+from typing import Any, List, Optional
+
 from .base import Metric, StatScores
 
 
@@ -57,7 +57,8 @@ class Accuracy(Metric):
             else:
                 # Top-k accuracy
                 import numpy as np
-                top_k_preds = np.argsort(preds, axis=-1)[..., -self.top_k:]
+
+                top_k_preds = np.argsort(preds, axis=-1)[..., -self.top_k :]
                 # Check if target is in top-k
                 target_expanded = target.reshape(-1, 1)
                 correct = (top_k_preds == target_expanded).any(axis=-1).sum()
@@ -223,8 +224,10 @@ class ConfusionMatrix(Metric):
                     matrix[i] = [x / row_sum for x in matrix[i]]
         elif self.normalize == "pred":
             # Normalize by column (predictions)
-            col_sums = [sum(matrix[i][j] for i in range(self.num_classes))
-                       for j in range(self.num_classes)]
+            col_sums = [
+                sum(matrix[i][j] for i in range(self.num_classes))
+                for j in range(self.num_classes)
+            ]
             for i in range(self.num_classes):
                 for j in range(self.num_classes):
                     if col_sums[j] > 0:
@@ -299,7 +302,6 @@ class AUROC(Metric):
         auc = 0.0
         tp = 0
         fp = 0
-        prev_fp = 0
         prev_tp = 0
 
         for _, t in paired:
@@ -311,9 +313,8 @@ class AUROC(Metric):
                 auc += (tp + prev_tp) / 2.0
 
             prev_tp = tp
-            prev_fp = fp
 
-        auc /= (n_pos * n_neg)
+        auc /= n_pos * n_neg
         return auc
 
 
@@ -442,7 +443,10 @@ class MulticlassAccuracy(Metric):
             accs = []
             for c in range(self.num_classes):
                 if self._state["total_per_class"][c] > 0:
-                    acc = self._state["correct_per_class"][c] / self._state["total_per_class"][c]
+                    acc = (
+                        self._state["correct_per_class"][c]
+                        / self._state["total_per_class"][c]
+                    )
                     accs.append(acc)
             return sum(accs) / len(accs) if accs else 0.0
 
@@ -453,7 +457,10 @@ class MulticlassAccuracy(Metric):
             weighted_sum = 0.0
             for c in range(self.num_classes):
                 if self._state["total_per_class"][c] > 0:
-                    acc = self._state["correct_per_class"][c] / self._state["total_per_class"][c]
+                    acc = (
+                        self._state["correct_per_class"][c]
+                        / self._state["total_per_class"][c]
+                    )
                     weight = self._state["total_per_class"][c] / total
                     weighted_sum += acc * weight
             return weighted_sum
