@@ -33,10 +33,6 @@ If your organization is working with specialized AI accelerators, FPGAs, or cust
 **Danny Wall** — CTO, OA Quantum Labs
 [dwall@oaqlabs.com](mailto:dwall@oaqlabs.com) | [oaqlabs.com](https://oaqlabs.com)
 
-## Support the Project
-
-We welcome financial support in the effort. Learn how you can help at https://oaqlabs.com/pyflame (bottom of page)
-
 ## Features
 
 - **Native WSE Design**: Built from the ground up for Cerebras architecture
@@ -385,7 +381,7 @@ Contributions are welcome! Please see our contributing guidelines (coming soon).
 
 ## License
 
-Apache 2.0 (planned)
+This project is licensed under the [Apache License 2.0](LICENSE).
 
 ## Acknowledgments
 
