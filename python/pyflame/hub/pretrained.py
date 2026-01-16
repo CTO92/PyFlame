@@ -274,6 +274,12 @@ def _download_file(
     if expected_sha256:
         actual_sha256 = _compute_sha256(temp_path)
         if actual_sha256 != expected_sha256:
+            # Security logging: checksum mismatch could indicate tampering
+            logger.warning(
+                f"SECURITY: Checksum verification failed for downloaded file. "
+                f"Expected {expected_sha256[:16]}..., got {actual_sha256[:16]}... "
+                f"This may indicate file corruption or tampering."
+            )
             os.remove(temp_path)
             raise RuntimeError(
                 f"Checksum mismatch. Expected {expected_sha256}, got {actual_sha256}"
@@ -341,35 +347,34 @@ def load_pretrained(
 
 
 class RestrictedUnpickler(pickle.Unpickler):
-    """Restricted unpickler that only allows safe modules."""
+    """Restricted unpickler that only allows explicitly whitelisted classes.
 
-    # Modules that are safe to unpickle
-    SAFE_MODULES = frozenset(
-        {
-            "numpy",
-            "numpy.core",
-            "numpy.core.multiarray",
-            "numpy.core.numeric",
-            "numpy.random",
-            "numpy._core",
-            "numpy._core.multiarray",
-            "collections",
-            "builtins",
-            "copy",
-            "functools",
-            "pyflame",
-            "pyflame.nn",
-            "pyflame.tensor",
-        }
-    )
+    Security Note: This unpickler uses a strict allowlist approach. Only
+    explicitly listed (module, class) pairs are allowed. Module prefix
+    matching is NOT used to prevent unsafe classes from slipping through.
+    """
 
-    # Classes that are explicitly allowed
+    # Classes that are explicitly allowed (strict allowlist)
+    # Format: (module, class_name)
     SAFE_CLASSES = frozenset(
         {
+            # NumPy core types
             ("numpy", "ndarray"),
             ("numpy", "dtype"),
+            ("numpy", "float32"),
+            ("numpy", "float64"),
+            ("numpy", "float16"),
+            ("numpy", "int32"),
+            ("numpy", "int64"),
+            ("numpy", "int16"),
+            ("numpy", "int8"),
+            ("numpy", "uint8"),
+            ("numpy", "bool_"),
             ("numpy.core.multiarray", "_reconstruct"),
+            ("numpy.core.multiarray", "scalar"),
             ("numpy._core.multiarray", "_reconstruct"),
+            ("numpy._core.multiarray", "scalar"),
+            # Python builtins (data types only, no code execution)
             ("builtins", "dict"),
             ("builtins", "list"),
             ("builtins", "tuple"),
@@ -377,25 +382,72 @@ class RestrictedUnpickler(pickle.Unpickler):
             ("builtins", "frozenset"),
             ("builtins", "bytes"),
             ("builtins", "bytearray"),
+            ("builtins", "str"),
+            ("builtins", "int"),
+            ("builtins", "float"),
+            ("builtins", "bool"),
+            ("builtins", "complex"),
+            ("builtins", "slice"),
+            ("builtins", "range"),
+            # Collections
             ("collections", "OrderedDict"),
+            ("collections", "defaultdict"),
+            # Copy module (for deepcopy support)
+            ("copy", "_reconstructor"),
+            # Functools (for partial, but NOT arbitrary callables)
+            # NOTE: functools.partial is intentionally NOT included as it can
+            # wrap arbitrary callables
+        }
+    )
+
+    # Dangerous classes that should NEVER be allowed
+    # These are checked separately to provide clear error messages
+    DANGEROUS_CLASSES = frozenset(
+        {
+            ("builtins", "eval"),
+            ("builtins", "exec"),
+            ("builtins", "compile"),
+            ("builtins", "open"),
+            ("builtins", "input"),
+            ("builtins", "__import__"),
+            ("os", "system"),
+            ("os", "popen"),
+            ("subprocess", "Popen"),
+            ("subprocess", "call"),
+            ("subprocess", "run"),
+            ("pickle", "loads"),
+            ("codecs", "encode"),
+            ("codecs", "decode"),
         }
     )
 
     def find_class(self, module: str, name: str):
-        """Only allow safe modules and classes to be unpickled."""
-        # Check explicit class allowlist first
+        """Only allow explicitly whitelisted classes to be unpickled."""
+        # Check for explicitly dangerous classes first
+        if (module, name) in self.DANGEROUS_CLASSES:
+            logger.error(
+                f"SECURITY ALERT: Blocked dangerous pickle class: {module}.{name}. "
+                f"This is a strong indicator of a malicious model file."
+            )
+            raise pickle.UnpicklingError(
+                f"BLOCKED: Dangerous class '{module}.{name}' in model file. "
+                f"This file may be malicious and should not be trusted."
+            )
+
+        # Check explicit class allowlist (strict - no module prefix matching)
         if (module, name) in self.SAFE_CLASSES:
             return super().find_class(module, name)
 
-        # Check if module is in safe modules
-        module_base = module.split(".")[0]
-        if module_base not in self.SAFE_MODULES:
-            raise pickle.UnpicklingError(
-                f"Unsafe module in model file: {module}.{name}. "
-                f"This may indicate a malicious model file."
-            )
-
-        return super().find_class(module, name)
+        # Security logging: log all blocked unpickle attempts
+        logger.warning(
+            f"SECURITY: Blocked unpickle of non-whitelisted class: {module}.{name}. "
+            f"This may indicate a malicious model file or incompatible format."
+        )
+        raise pickle.UnpicklingError(
+            f"Class '{module}.{name}' is not in the allowed list. "
+            f"For security, only explicitly whitelisted classes can be unpickled. "
+            f"Consider using SafeTensors format instead."
+        )
 
 
 def _load_state_dict(path: str) -> Dict[str, Any]:
@@ -410,6 +462,11 @@ def _load_state_dict(path: str) -> Dict[str, Any]:
         try:
             return RestrictedUnpickler(f).load()
         except pickle.UnpicklingError as e:
+            # Security logging: failed unpickle indicates potential malicious file
+            logger.error(
+                f"SECURITY: Failed to unpickle model file '{path}': {e}. "
+                f"The file may be corrupted or contain malicious content."
+            )
             raise RuntimeError(
                 f"Failed to load model file '{path}': {e}. "
                 f"The file may be corrupted or contain unsafe content."

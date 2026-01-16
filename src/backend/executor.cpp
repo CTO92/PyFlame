@@ -7,8 +7,127 @@
 #include <unordered_map>
 #include <cmath>
 #include <algorithm>
+#include <cassert>
+#include <limits>
 
 namespace pyflame::backend {
+
+namespace {
+
+/// Safely copy data with size validation to prevent buffer overflows
+/// @param dest Destination buffer
+/// @param dest_size Size of destination buffer in bytes
+/// @param src Source buffer
+/// @param src_size Size of source data in bytes
+/// @throws std::runtime_error if sizes don't match or pointers are null
+inline void safe_memcpy(void* dest, size_t dest_size, const void* src, size_t src_size) {
+    if (dest == nullptr) {
+        throw std::runtime_error("safe_memcpy: destination pointer is null");
+    }
+    if (src == nullptr) {
+        throw std::runtime_error("safe_memcpy: source pointer is null");
+    }
+    if (src_size > dest_size) {
+        throw std::runtime_error(
+            "safe_memcpy: source size (" + std::to_string(src_size) +
+            ") exceeds destination buffer size (" + std::to_string(dest_size) + ")"
+        );
+    }
+    std::memcpy(dest, src, src_size);
+}
+
+/// Safely zero-initialize a buffer with size validation
+inline void safe_memset(void* dest, size_t dest_size, int value, size_t count) {
+    if (dest == nullptr) {
+        throw std::runtime_error("safe_memset: destination pointer is null");
+    }
+    if (count > dest_size) {
+        throw std::runtime_error(
+            "safe_memset: count (" + std::to_string(count) +
+            ") exceeds destination buffer size (" + std::to_string(dest_size) + ")"
+        );
+    }
+    std::memset(dest, value, count);
+}
+
+/// Security: Maximum allowed graph size to prevent DoS
+constexpr size_t MAX_GRAPH_NODES = 1000000;
+constexpr size_t MAX_GRAPH_EDGES = 10000000;
+
+/// Security: Validate graph structure before execution
+/// Checks for cycles, excessive size, and other malformed structures
+void validate_graph(const ir::Graph& graph) {
+    // Check graph size limits
+    size_t num_nodes = graph.num_nodes();
+    if (num_nodes > MAX_GRAPH_NODES) {
+        throw std::runtime_error(
+            "Graph too large: " + std::to_string(num_nodes) +
+            " nodes exceeds maximum of " + std::to_string(MAX_GRAPH_NODES)
+        );
+    }
+
+    // Count total edges and detect cycles using DFS
+    size_t total_edges = 0;
+    std::unordered_map<ir::NodeId, int> visit_state;  // 0=unvisited, 1=visiting, 2=visited
+    std::vector<ir::NodeId> stack;
+
+    // Initialize all nodes as unvisited
+    for (const auto& node : graph.nodes()) {
+        visit_state[node->id()] = 0;
+        total_edges += node->inputs().size();
+    }
+
+    // Check edge count
+    if (total_edges > MAX_GRAPH_EDGES) {
+        throw std::runtime_error(
+            "Graph too complex: " + std::to_string(total_edges) +
+            " edges exceeds maximum of " + std::to_string(MAX_GRAPH_EDGES)
+        );
+    }
+
+    // DFS cycle detection
+    for (const auto& node : graph.nodes()) {
+        if (visit_state[node->id()] != 0) continue;
+
+        stack.push_back(node->id());
+
+        while (!stack.empty()) {
+            ir::NodeId current = stack.back();
+            auto current_node = graph.get_node(current);
+
+            if (visit_state[current] == 0) {
+                // First visit - mark as visiting
+                visit_state[current] = 1;
+
+                // Add all input dependencies to stack
+                for (const auto& input : current_node->inputs()) {
+                    ir::NodeId input_id = input.node_id;
+
+                    if (visit_state[input_id] == 1) {
+                        // Found a node we're currently visiting - cycle!
+                        throw std::runtime_error(
+                            "Graph validation failed: cycle detected involving node " +
+                            std::to_string(input_id)
+                        );
+                    }
+
+                    if (visit_state[input_id] == 0) {
+                        stack.push_back(input_id);
+                    }
+                }
+            } else if (visit_state[current] == 1) {
+                // Finished processing all inputs - mark as visited
+                visit_state[current] = 2;
+                stack.pop_back();
+            } else {
+                // Already visited - just pop
+                stack.pop_back();
+            }
+        }
+    }
+}
+
+}  // anonymous namespace
 
 /// Execution backend type
 enum class Backend {
@@ -72,8 +191,19 @@ private:
         result.success = true;
 
         try {
-            // Get topological order
+            // Security: Validate graph before execution
+            validate_graph(graph);
+
+            // Get topological order (safe after validation)
             auto topo = graph.topological_order();
+
+            // Security: Sanity check topological order size
+            if (topo.size() != graph.num_nodes()) {
+                throw std::runtime_error(
+                    "Graph validation failed: topological order size mismatch "
+                    "(possible cycle detected)"
+                );
+            }
 
             // Storage for intermediate results
             std::unordered_map<ir::NodeId, std::shared_ptr<uint8_t>> node_data;
@@ -89,17 +219,19 @@ private:
 
                 // Handle different node types
                 if (node->is_constant()) {
-                    // Copy constant data
+                    // Copy constant data with size validation
                     if (node->has_constant_data()) {
-                        std::memcpy(data.get(), node->constant_data().data(), bytes);
+                        const auto& const_data = node->constant_data();
+                        safe_memcpy(data.get(), bytes, const_data.data(), const_data.size());
                     } else {
-                        std::memset(data.get(), 0, bytes);
+                        safe_memset(data.get(), bytes, 0, bytes);
                     }
                 }
                 else if (node->is_input() || node->is_parameter()) {
                     // Inputs should already have data
                     if (node->has_constant_data()) {
-                        std::memcpy(data.get(), node->constant_data().data(), bytes);
+                        const auto& const_data = node->constant_data();
+                        safe_memcpy(data.get(), bytes, const_data.data(), const_data.size());
                     }
                 }
                 else if (node->is_operation()) {
@@ -170,7 +302,21 @@ private:
 
             case ir::OpType::DIV:
                 for (int64_t i = 0; i < numel; ++i) {
-                    out[i] = input_ptrs[0][i] / input_ptrs[1][i];
+                    float divisor = input_ptrs[1][i];
+                    // Security: Check for division by zero to prevent undefined behavior
+                    if (divisor == 0.0f) {
+                        // Return infinity with appropriate sign (IEEE 754 behavior)
+                        float dividend = input_ptrs[0][i];
+                        if (dividend == 0.0f) {
+                            out[i] = std::numeric_limits<float>::quiet_NaN();
+                        } else if (dividend > 0.0f) {
+                            out[i] = std::numeric_limits<float>::infinity();
+                        } else {
+                            out[i] = -std::numeric_limits<float>::infinity();
+                        }
+                    } else {
+                        out[i] = input_ptrs[0][i] / divisor;
+                    }
                 }
                 break;
 
@@ -320,7 +466,9 @@ private:
             case ir::OpType::RESHAPE:
             case ir::OpType::VIEW: {
                 int64_t input_numel = inputs[0]->numel();
-                std::memcpy(out, input_ptrs[0], input_numel * sizeof(float));
+                size_t copy_bytes = static_cast<size_t>(input_numel) * sizeof(float);
+                size_t output_bytes = static_cast<size_t>(numel) * sizeof(float);
+                safe_memcpy(out, output_bytes, input_ptrs[0], copy_bytes);
                 break;
             }
 

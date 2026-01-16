@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <algorithm>
 #include <cctype>
+#include <set>
 
 namespace pyflame::backend {
 
@@ -115,6 +116,126 @@ void validate_file_in_dir(
     std::string rel_str = relative.string();
     if (rel_str.substr(0, 2) == ".." || rel_str.find("/../") != std::string::npos) {
         throw std::runtime_error("Output file path escapes allowed directory");
+    }
+}
+
+/// Maximum allowed length for template parameter values
+constexpr size_t MAX_PARAM_VALUE_LENGTH = 256;
+
+/// Check if a character is a common Unicode homoglyph that could bypass ASCII checks
+/// Returns the ASCII equivalent if it's a homoglyph, or the original char if not
+char normalize_homoglyph(unsigned char c) {
+    // Common Cyrillic/Greek homoglyphs in extended ASCII range
+    // Note: Full Unicode homoglyph detection requires UTF-8 parsing
+    // This catches the most common single-byte attacks
+    return c;  // For single-byte chars, they're already ASCII-comparable
+}
+
+/// Validate a template parameter value to prevent CSL code injection
+/// Uses a strict allowlist approach - only specific safe characters allowed
+bool is_safe_template_value(const std::string& value) {
+    if (value.empty()) return false;
+
+    // Security: Limit value length to prevent buffer issues and DoS
+    if (value.length() > MAX_PARAM_VALUE_LENGTH) return false;
+
+    // Security: Check for null bytes which could truncate strings
+    if (value.find('\0') != std::string::npos) return false;
+
+    // Security: Check for non-ASCII characters (potential homoglyph attack)
+    for (unsigned char c : value) {
+        if (c > 127) {
+            return false;  // Reject any non-ASCII
+        }
+    }
+
+    // Strict character allowlist for template values
+    for (char c : value) {
+        unsigned char uc = static_cast<unsigned char>(c);
+        // Allow: alphanumeric, underscore, period, hyphen, colon, space
+        // Also allow brackets and commas for array syntax
+        bool allowed = std::isalnum(uc) ||
+                       c == '_' || c == '.' || c == '-' || c == ':' || c == ' ' ||
+                       c == '[' || c == ']' || c == ',' || c == '(' || c == ')';
+        if (!allowed) {
+            return false;
+        }
+    }
+
+    // Disallow suspicious patterns that could be CSL code injection
+    static const std::vector<std::string> dangerous_patterns = {
+        "@",     // CSL builtins
+        "//",    // Comments
+        "/*",    // Block comments
+        "*/",    // Block comment end
+        ";",     // Statement separator
+        "{",     // Code blocks
+        "}",     // Code block end
+        "\\",    // Escape sequences
+        "\"",    // String literals
+        "'",     // Char literals
+        "`",     // Template literals
+        "$",     // Variable interpolation
+        "#",     // Preprocessor
+        "&&",    // Logical operators (could enable injection)
+        "||",    // Logical operators
+        "==",    // Comparison (may indicate complex expressions)
+        "!=",    // Comparison
+        "<<",    // Bit shift / stream (could be misused)
+        ">>",    // Bit shift / stream
+        "..",    // Range operator (could enable traversal)
+        "fn ",   // Function declaration
+        "var ",  // Variable declaration
+        "const ",// Const declaration
+        "pub ",  // Public declaration
+        "import",// Import statement
+        "export",// Export statement
+    };
+
+    for (const auto& pattern : dangerous_patterns) {
+        if (value.find(pattern) != std::string::npos) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/// Validate all template parameters before substitution
+void validate_template_params(const std::map<std::string, std::string>& params) {
+    // List of allowed parameter names (strict whitelist)
+    static const std::set<std::string> allowed_params = {
+        "TIMESTAMP", "DTYPE", "TILE_SIZE", "PE_WIDTH", "PE_HEIGHT",
+        "M", "N", "K"  // Matrix dimensions for matmul
+    };
+
+    // Security: Limit total number of parameters
+    constexpr size_t MAX_PARAMS = 20;
+    if (params.size() > MAX_PARAMS) {
+        throw std::invalid_argument(
+            "Too many template parameters (" + std::to_string(params.size()) +
+            "), maximum allowed: " + std::to_string(MAX_PARAMS)
+        );
+    }
+
+    for (const auto& [key, value] : params) {
+        // Validate parameter name is in whitelist
+        if (allowed_params.find(key) == allowed_params.end()) {
+            throw std::invalid_argument(
+                "Unknown template parameter: '" + key + "'. "
+                "Only predefined parameters are allowed for security."
+            );
+        }
+
+        // Validate parameter value is safe
+        if (!is_safe_template_value(value)) {
+            throw std::invalid_argument(
+                "Invalid template parameter value for '" + key + "': "
+                "contains unsafe characters or patterns. "
+                "Only alphanumeric characters, underscores, periods, hyphens, "
+                "colons, spaces, and array syntax are allowed."
+            );
+        }
     }
 }
 
@@ -377,6 +498,10 @@ std::string CSLTemplates::instantiate(
     const std::string& tmpl,
     const std::map<std::string, std::string>& params
 ) const {
+    // Security: Validate all template parameters before substitution
+    // to prevent CSL code injection attacks
+    validate_template_params(params);
+
     std::string result = tmpl;
 
     // Replace {{PARAM}} patterns

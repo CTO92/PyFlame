@@ -4,8 +4,206 @@ Custom operator registration for PyFlame.
 Allows users to define and register custom operations.
 """
 
+import logging
+import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
+
+# Security: Maximum allowed template size (1 MB)
+_MAX_TEMPLATE_SIZE = 1024 * 1024
+
+# Security: Pattern for dangerous CSL constructs that could indicate injection
+_DANGEROUS_CSL_PATTERNS = [
+    r"@import_module\s*\(\s*[\"'][^<]",  # Non-system module imports
+    r"@comptime_print",  # Debug output that could leak info
+    r"@panic",  # Could be used for DoS
+    r"__asm__",  # Inline assembly
+    r"@ptrCast",  # Pointer manipulation
+    r"@intToPtr",  # Integer to pointer
+    r"@ptrToInt",  # Pointer to integer
+    r"@bitCast",  # Bit-level type punning
+    r"@alignCast",  # Alignment manipulation
+    r"extern\s+fn",  # External function declarations
+    r"@cImport",  # C imports
+    r"@embedFile",  # File embedding
+    r"std\.os\.",  # OS-level operations
+    r"std\.fs\.",  # Filesystem operations
+    r"std\.net\.",  # Network operations
+    r"std\.process\.",  # Process operations
+    r"std\.child_process\.",  # Child process operations
+    r"std\.debug\.",  # Debug operations
+    r"std\.heap\.",  # Heap manipulation
+    r"@import\s*\(\s*[\"']std[\"']\s*\)",  # Full std import
+    r"unreachable",  # Could indicate malicious control flow
+    r"@setRuntimeSafety\s*\(\s*false",  # Disabling safety checks
+]
+
+# Suspicious strings that may indicate malicious intent
+_SUSPICIOUS_STRINGS = [
+    "system(",
+    "exec(",
+    "eval(",
+    "shell",
+    "/bin/",
+    "/etc/",
+    "/proc/",
+    "/dev/",
+    "/tmp/",
+    "password",
+    "secret",
+    "token",
+    "credential",
+    "api_key",
+    "private_key",
+    "ssh_key",
+    "env[",
+    "environ",
+    "getenv",
+]
+
+
+def _normalize_unicode(text: str) -> str:
+    """Normalize Unicode to detect homoglyph attacks.
+
+    Converts confusable characters to their ASCII equivalents where possible.
+    """
+    # NFKC normalization converts compatibility characters to canonical form
+    normalized = unicodedata.normalize("NFKC", text)
+
+    # Additional mapping for common homoglyphs that survive NFKC
+    homoglyph_map = {
+        "\u0391": "A",  # Greek Alpha
+        "\u0392": "B",  # Greek Beta
+        "\u0395": "E",  # Greek Epsilon
+        "\u0396": "Z",  # Greek Zeta
+        "\u0397": "H",  # Greek Eta
+        "\u0399": "I",  # Greek Iota
+        "\u039a": "K",  # Greek Kappa
+        "\u039c": "M",  # Greek Mu
+        "\u039d": "N",  # Greek Nu
+        "\u039f": "O",  # Greek Omicron
+        "\u03a1": "P",  # Greek Rho
+        "\u03a4": "T",  # Greek Tau
+        "\u03a7": "X",  # Greek Chi
+        "\u03a5": "Y",  # Greek Upsilon
+        "\u0410": "A",  # Cyrillic A
+        "\u0412": "B",  # Cyrillic Ve
+        "\u0415": "E",  # Cyrillic Ie
+        "\u041a": "K",  # Cyrillic Ka
+        "\u041c": "M",  # Cyrillic Em
+        "\u041d": "H",  # Cyrillic En
+        "\u041e": "O",  # Cyrillic O
+        "\u0420": "P",  # Cyrillic Er
+        "\u0421": "C",  # Cyrillic Es
+        "\u0422": "T",  # Cyrillic Te
+        "\u0425": "X",  # Cyrillic Ha
+        "\u0430": "a",  # Cyrillic a
+        "\u0435": "e",  # Cyrillic ie
+        "\u043e": "o",  # Cyrillic o
+        "\u0440": "p",  # Cyrillic er
+        "\u0441": "c",  # Cyrillic es
+        "\u0443": "y",  # Cyrillic u
+        "\u0445": "x",  # Cyrillic ha
+        "\u2010": "-",  # Hyphen
+        "\u2011": "-",  # Non-breaking hyphen
+        "\u2012": "-",  # Figure dash
+        "\u2013": "-",  # En dash
+        "\u2014": "-",  # Em dash
+        "\u2018": "'",  # Left single quote
+        "\u2019": "'",  # Right single quote
+        "\u201c": '"',  # Left double quote
+        "\u201d": '"',  # Right double quote
+        "\uff20": "@",  # Fullwidth @
+        "\uff3f": "_",  # Fullwidth _
+    }
+
+    result = []
+    for char in normalized:
+        result.append(homoglyph_map.get(char, char))
+
+    return "".join(result)
+
+
+def _validate_csl_template(template: str, op_name: str) -> None:
+    """Validate a CSL template for security issues.
+
+    Args:
+        template: The CSL template string
+        op_name: Name of the operation (for error messages)
+
+    Raises:
+        ValueError: If the template contains potentially dangerous constructs
+
+    Security Note:
+        This validation provides defense-in-depth but is not exhaustive.
+        CSL templates are code that will be compiled and run on Cerebras
+        hardware. Only use templates from trusted sources.
+    """
+    if not template:
+        return
+
+    # Check template size
+    if len(template) > _MAX_TEMPLATE_SIZE:
+        raise ValueError(
+            f"CSL template for '{op_name}' exceeds maximum size "
+            f"({len(template)} > {_MAX_TEMPLATE_SIZE} bytes)"
+        )
+
+    # Security: Normalize Unicode to detect homoglyph attacks
+    # This converts look-alike characters (e.g., Cyrillic 'а' -> ASCII 'a')
+    normalized_template = _normalize_unicode(template)
+
+    # Check for null bytes which could cause string truncation
+    if "\x00" in template or "\x00" in normalized_template:
+        logger.error(
+            f"SECURITY: CSL template for '{op_name}' contains null bytes"
+        )
+        raise ValueError(
+            f"CSL template for '{op_name}' contains invalid null bytes"
+        )
+
+    # Check for dangerous patterns in both original and normalized
+    for check_template in [template, normalized_template]:
+        for pattern in _DANGEROUS_CSL_PATTERNS:
+            if re.search(pattern, check_template, re.IGNORECASE):
+                logger.warning(
+                    f"SECURITY: CSL template for '{op_name}' contains potentially "
+                    f"dangerous pattern matching '{pattern}'. Template rejected."
+                )
+                raise ValueError(
+                    f"CSL template for '{op_name}' contains potentially unsafe constructs. "
+                    f"Only use CSL templates from trusted sources."
+                )
+
+    # Check for suspicious string patterns
+    template_lower = normalized_template.lower()
+    for suspicious in _SUSPICIOUS_STRINGS:
+        if suspicious in template_lower:
+            logger.warning(
+                f"SECURITY: CSL template for '{op_name}' contains suspicious "
+                f"string '{suspicious}'."
+            )
+            raise ValueError(
+                f"CSL template for '{op_name}' contains suspicious content. "
+                f"Only use CSL templates from trusted sources."
+            )
+
+    # Check for non-ASCII characters that survived normalization
+    # (may indicate obfuscation attempts)
+    non_ascii_chars = [c for c in normalized_template if ord(c) > 127]
+    if non_ascii_chars:
+        unique_non_ascii = set(non_ascii_chars)
+        if len(unique_non_ascii) > 10:  # Allow some Unicode in comments/strings
+            logger.warning(
+                f"SECURITY: CSL template for '{op_name}' contains many "
+                f"non-ASCII characters which may indicate obfuscation"
+            )
+            raise ValueError(
+                f"CSL template for '{op_name}' contains suspicious non-ASCII content"
+            )
 
 
 @dataclass
@@ -16,9 +214,16 @@ class CustomOp:
         name: Unique operator name
         forward_fn: Forward computation function
         backward_fn: Backward gradient function (optional)
-        csl_template: CSL code template for Cerebras execution (optional)
+        csl_template: CSL code template for Cerebras execution (optional).
+            SECURITY WARNING: CSL templates are code that will be compiled
+            and executed. Only use templates from trusted sources.
         schema: Operator schema definition
         doc: Documentation string
+
+    Security Note:
+        The csl_template field accepts arbitrary CSL code. This code will be
+        compiled by the Cerebras SDK and executed on hardware. Only use
+        templates from sources you trust completely.
     """
 
     name: str
@@ -59,13 +264,19 @@ def register_custom_op(
         name: Unique operator name
         forward_fn: Forward computation function
         backward_fn: Backward gradient function for autograd
-        csl_template: CSL code template for Cerebras execution
+        csl_template: CSL code template for Cerebras execution.
+            SECURITY WARNING: Templates are compiled and executed.
+            Only use templates from trusted sources.
         schema: Operator schema (e.g., "(Tensor x, Tensor y) -> Tensor")
         doc: Documentation string
         **metadata: Additional metadata
 
     Returns:
         Registered CustomOp instance
+
+    Raises:
+        ValueError: If the operator name is already registered or if the
+            CSL template fails security validation.
 
     Example:
         >>> def swish_forward(x):
@@ -85,6 +296,14 @@ def register_custom_op(
     """
     if name in _custom_ops:
         raise ValueError(f"Custom op '{name}' already registered")
+
+    # Security: Validate CSL template if provided
+    if csl_template:
+        _validate_csl_template(csl_template, name)
+        logger.info(
+            f"Registering custom op '{name}' with CSL template. "
+            f"Ensure the template is from a trusted source."
+        )
 
     op = CustomOp(
         name=name,

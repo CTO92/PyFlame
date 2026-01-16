@@ -20,6 +20,7 @@ Configure via environment variables:
     SSL_KEYFILE: Path to SSL key
 """
 
+import hmac
 import os
 import sys
 import json
@@ -52,26 +53,38 @@ ALLOWED_MODEL_DIRS = os.environ.get("ALLOWED_MODEL_DIRS", "/models").split(",")
 def validate_model_path(model_path: str) -> Path:
     """Validate that model path is within allowed directories.
 
-    Prevents path traversal attacks.
+    Prevents path traversal attacks using proper path containment checks.
     """
     try:
         resolved = Path(model_path).resolve()
     except (ValueError, OSError) as e:
         raise ValueError(f"Invalid path: {e}")
 
-    # Check if path is within allowed directories
+    # Security: Check for null bytes which could bypass validation
+    if "\x00" in model_path:
+        raise ValueError("Invalid path: contains null bytes")
+
+    # Check if path is within allowed directories using relative_to()
+    # This is secure against path traversal (e.g., /models_evil won't match /models)
     for allowed_dir in ALLOWED_MODEL_DIRS:
         try:
             allowed_resolved = Path(allowed_dir).resolve()
-            if str(resolved).startswith(str(allowed_resolved)):
-                # Verify it has a valid model extension
-                if resolved.suffix in ('.pf', '.pt', '.pth', '.onnx'):
-                    return resolved
-        except (ValueError, OSError):
+            # relative_to() raises ValueError if resolved is not under allowed_resolved
+            resolved.relative_to(allowed_resolved)
+            # Verify it has a valid model extension
+            if resolved.suffix.lower() in ('.pf', '.pt', '.pth', '.onnx', '.safetensors'):
+                return resolved
+            else:
+                raise ValueError(
+                    f"Invalid model extension '{resolved.suffix}'. "
+                    f"Allowed: .pf, .pt, .pth, .onnx, .safetensors"
+                )
+        except ValueError:
+            # Not under this allowed directory, try next
             continue
 
     raise ValueError(
-        f"Model path '{model_path}' is not within allowed directories. "
+        f"Model path is not within allowed directories. "
         f"Allowed: {ALLOWED_MODEL_DIRS}"
     )
 
@@ -108,9 +121,49 @@ def create_app():
             response.headers["X-XSS-Protection"] = "1; mode=block"
             response.headers["Cache-Control"] = "no-store"
             response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+            response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
             return response
 
     app.add_middleware(SecurityHeadersMiddleware)
+
+    # Request validation middleware for Content-Type and size limits
+    class RequestValidationMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            # Security: Validate Content-Type for POST requests
+            if request.method == "POST":
+                content_type = request.headers.get("content-type", "")
+                # Allow JSON content type (with optional charset)
+                if not content_type.startswith("application/json"):
+                    from starlette.responses import JSONResponse
+                    return JSONResponse(
+                        status_code=415,
+                        content={"detail": "Content-Type must be application/json"}
+                    )
+
+                # Security: Check Content-Length before processing
+                content_length = request.headers.get("content-length")
+                if content_length:
+                    try:
+                        size_bytes = int(content_length)
+                        max_bytes = int(MAX_INPUT_MB * 1024 * 1024)
+                        if size_bytes > max_bytes:
+                            return JSONResponse(
+                                status_code=413,
+                                content={
+                                    "detail": f"Request body too large ({size_bytes} bytes). "
+                                              f"Maximum: {max_bytes} bytes"
+                                }
+                            )
+                    except ValueError:
+                        return JSONResponse(
+                            status_code=400,
+                            content={"detail": "Invalid Content-Length header"}
+                        )
+
+            return await call_next(request)
+
+    app.add_middleware(RequestValidationMiddleware)
 
     # Enable CORS with restricted origins
     app.add_middleware(
@@ -126,7 +179,10 @@ def create_app():
 
     async def verify_api_key(api_key: str = Depends(api_key_header)):
         if API_KEY is not None:
-            if api_key != API_KEY:
+            # Security: Use timing-safe comparison to prevent timing attacks
+            if api_key is None or not hmac.compare_digest(
+                api_key.encode("utf-8"), API_KEY.encode("utf-8")
+            ):
                 logger.warning("Invalid API key attempt")
                 raise HTTPException(status_code=401, detail="Invalid or missing API key")
         return api_key

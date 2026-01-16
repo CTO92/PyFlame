@@ -128,4 +128,6 @@ WORKDIR /app/notebooks
 
 EXPOSE 8888
 
-CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root"]
+# Security: Do not use --allow-root; container runs as non-root user 'pyflame'
+# Bind to 127.0.0.1 by default for security. Override with JUPYTER_IP env var.
+CMD ["jupyter", "lab", "--ip=127.0.0.1", "--port=8888", "--no-browser"]

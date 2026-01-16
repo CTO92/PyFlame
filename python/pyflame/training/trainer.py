@@ -23,34 +23,33 @@ logger = logging.getLogger(__name__)
 
 
 class RestrictedUnpickler(pickle.Unpickler):
-    """Restricted unpickler that only allows safe modules for checkpoint loading."""
+    """Restricted unpickler that only allows explicitly whitelisted classes.
 
-    SAFE_MODULES = frozenset(
-        {
-            "numpy",
-            "numpy.core",
-            "numpy.core.multiarray",
-            "numpy.core.numeric",
-            "numpy.random",
-            "numpy._core",
-            "numpy._core.multiarray",
-            "collections",
-            "builtins",
-            "copy",
-            "functools",
-            "pyflame",
-            "pyflame.nn",
-            "pyflame.tensor",
-            "pyflame.optim",
-        }
-    )
+    Security Note: This unpickler uses a strict allowlist approach for
+    checkpoint loading. Only explicitly listed (module, class) pairs are
+    allowed. Module prefix matching is NOT used.
+    """
 
+    # Classes that are explicitly allowed (strict allowlist)
     SAFE_CLASSES = frozenset(
         {
+            # NumPy core types
             ("numpy", "ndarray"),
             ("numpy", "dtype"),
+            ("numpy", "float32"),
+            ("numpy", "float64"),
+            ("numpy", "float16"),
+            ("numpy", "int32"),
+            ("numpy", "int64"),
+            ("numpy", "int16"),
+            ("numpy", "int8"),
+            ("numpy", "uint8"),
+            ("numpy", "bool_"),
             ("numpy.core.multiarray", "_reconstruct"),
+            ("numpy.core.multiarray", "scalar"),
             ("numpy._core.multiarray", "_reconstruct"),
+            ("numpy._core.multiarray", "scalar"),
+            # Python builtins (data types only)
             ("builtins", "dict"),
             ("builtins", "list"),
             ("builtins", "tuple"),
@@ -58,21 +57,60 @@ class RestrictedUnpickler(pickle.Unpickler):
             ("builtins", "frozenset"),
             ("builtins", "bytes"),
             ("builtins", "bytearray"),
-            ("builtins", "float"),
+            ("builtins", "str"),
             ("builtins", "int"),
+            ("builtins", "float"),
+            ("builtins", "bool"),
+            ("builtins", "complex"),
+            ("builtins", "slice"),
+            ("builtins", "range"),
+            # Collections
             ("collections", "OrderedDict"),
+            ("collections", "defaultdict"),
+            # Copy module
+            ("copy", "_reconstructor"),
+        }
+    )
+
+    # Dangerous classes that should NEVER be allowed
+    DANGEROUS_CLASSES = frozenset(
+        {
+            ("builtins", "eval"),
+            ("builtins", "exec"),
+            ("builtins", "compile"),
+            ("builtins", "open"),
+            ("builtins", "__import__"),
+            ("os", "system"),
+            ("os", "popen"),
+            ("subprocess", "Popen"),
+            ("subprocess", "call"),
+            ("subprocess", "run"),
         }
     )
 
     def find_class(self, module: str, name: str):
+        # Check for explicitly dangerous classes first
+        if (module, name) in self.DANGEROUS_CLASSES:
+            logger.error(
+                f"SECURITY ALERT: Blocked dangerous class in checkpoint: {module}.{name}"
+            )
+            raise pickle.UnpicklingError(
+                f"BLOCKED: Dangerous class '{module}.{name}' in checkpoint. "
+                f"This checkpoint may be malicious."
+            )
+
+        # Check explicit class allowlist (strict - no module prefix matching)
         if (module, name) in self.SAFE_CLASSES:
             return super().find_class(module, name)
-        module_base = module.split(".")[0]
-        if module_base not in self.SAFE_MODULES:
-            raise pickle.UnpicklingError(
-                f"Unsafe module in checkpoint: {module}.{name}"
-            )
-        return super().find_class(module, name)
+
+        # Block all non-whitelisted classes
+        logger.warning(
+            f"SECURITY: Blocked non-whitelisted class in checkpoint: {module}.{name}"
+        )
+        raise pickle.UnpicklingError(
+            f"Class '{module}.{name}' is not in the allowed list for checkpoints. "
+            f"Re-save the checkpoint using trainer.save_checkpoint() for safe format."
+        )
 
 
 @dataclass
@@ -500,44 +538,171 @@ class Trainer:
             self.logger.log_metrics(metrics, step=step)
 
     def save_checkpoint(self, path: Optional[str] = None) -> str:
-        """Save a checkpoint."""
+        """Save a checkpoint using safe serialization.
+
+        Uses JSON for metadata and NumPy's .npz format for tensor data,
+        avoiding pickle to prevent potential security issues when sharing
+        checkpoint files.
+        """
         if path is None:
             path = os.path.join(
                 self.config.save_dir,
-                f"checkpoint-epoch{self.state.epoch}-step{self.state.global_step}.pt",
+                f"checkpoint-epoch{self.state.epoch}-step{self.state.global_step}.npz",
             )
 
-        checkpoint = {
-            "epoch": self.state.epoch,
-            "global_step": self.state.global_step,
-            "best_metric": self.state.best_metric,
+        # Metadata stored as JSON-serializable dict
+        metadata = {
+            "epoch": int(self.state.epoch),
+            "global_step": int(self.state.global_step),
+            "best_metric": float(self.state.best_metric)
+            if self.state.best_metric != float("inf")
+            else None,
+            "format_version": 2,  # Version 2 = safe format (no pickle)
         }
 
-        # Save model state
-        if hasattr(self.model, "state_dict"):
-            checkpoint["model_state_dict"] = self.model.state_dict()
-
-        # Save optimizer state
-        if self.optimizer is not None and hasattr(self.optimizer, "state_dict"):
-            checkpoint["optimizer_state_dict"] = self.optimizer.state_dict()
-
-        # Save scheduler state
-        if self.scheduler is not None and hasattr(self.scheduler, "state_dict"):
-            checkpoint["scheduler_state_dict"] = self.scheduler.state_dict()
-
-        # Save (would use pyflame.save or torch.save)
         try:
-            import pickle
+            import json
+            import numpy as np
 
-            with open(path, "wb") as f:
-                pickle.dump(checkpoint, f)
+            # Collect all arrays to save
+            arrays_to_save = {}
+
+            # Save metadata as JSON string in a special array
+            metadata_json = json.dumps(metadata)
+            arrays_to_save["__metadata__"] = np.array(
+                [ord(c) for c in metadata_json], dtype=np.uint8
+            )
+
+            # Save model state
+            if hasattr(self.model, "state_dict"):
+                model_state = self.model.state_dict()
+                for key, value in model_state.items():
+                    arr = self._to_numpy(value)
+                    if arr is not None:
+                        arrays_to_save[f"model.{key}"] = arr
+
+            # Save optimizer state (simplified - scalar values only for safety)
+            if self.optimizer is not None and hasattr(self.optimizer, "state_dict"):
+                opt_state = self.optimizer.state_dict()
+                # Only save param_groups config, not full state (avoids pickle)
+                if "param_groups" in opt_state:
+                    for i, group in enumerate(opt_state["param_groups"]):
+                        for param_key, param_val in group.items():
+                            if isinstance(param_val, (int, float)):
+                                # Store scalars as 0-d arrays
+                                arrays_to_save[f"optim.group{i}.{param_key}"] = np.array(
+                                    param_val
+                                )
+
+            # Save scheduler state (simplified)
+            if self.scheduler is not None and hasattr(self.scheduler, "state_dict"):
+                sched_state = self.scheduler.state_dict()
+                for key, value in sched_state.items():
+                    if isinstance(value, (int, float)):
+                        arrays_to_save[f"scheduler.{key}"] = np.array(value)
+
+            # Save using numpy's compressed format (safe, no pickle)
+            np.savez_compressed(path, **arrays_to_save)
+
         except Exception as e:
-            print(f"Warning: Could not save checkpoint: {e}")
+            logger.warning(f"Could not save checkpoint: {e}")
 
         return path
 
+    def _to_numpy(self, value) -> "Optional[np.ndarray]":
+        """Convert a value to numpy array if possible."""
+        try:
+            import numpy as np
+
+            if isinstance(value, np.ndarray):
+                return value
+            if hasattr(value, "numpy"):
+                return value.numpy()
+            if hasattr(value, "detach"):
+                return value.detach().cpu().numpy()
+            if isinstance(value, (list, tuple)):
+                return np.array(value)
+            if isinstance(value, (int, float)):
+                return np.array(value)
+            return None
+        except Exception:
+            return None
+
     def load_checkpoint(self, path: str):
-        """Load a checkpoint with security restrictions."""
+        """Load a checkpoint with security restrictions.
+
+        Supports two formats:
+        - Version 2 (recommended): Safe .npz format with JSON metadata
+        - Version 1 (legacy): Pickle format with RestrictedUnpickler
+
+        The format is auto-detected based on file contents.
+        """
+        import json
+        import numpy as np
+
+        # Try to load as safe .npz format first
+        try:
+            data = np.load(path, allow_pickle=False)  # Security: Disable pickle
+
+            # Check for metadata
+            if "__metadata__" in data:
+                # New safe format (version 2)
+                metadata_bytes = data["__metadata__"]
+                metadata_json = "".join(chr(b) for b in metadata_bytes)
+                metadata = json.loads(metadata_json)
+
+                # Restore state
+                self.state.epoch = metadata.get("epoch", 0)
+                self.state.global_step = metadata.get("global_step", 0)
+                best_metric = metadata.get("best_metric")
+                self.state.best_metric = (
+                    float(best_metric) if best_metric is not None else float("inf")
+                )
+
+                # Restore model state
+                if hasattr(self.model, "load_state_dict"):
+                    model_state = {}
+                    for key in data.files:
+                        if key.startswith("model."):
+                            param_name = key[6:]  # Remove "model." prefix
+                            model_state[param_name] = data[key]
+
+                    if model_state:
+                        self.model.load_state_dict(model_state, strict=False)
+
+                # Restore optimizer state (simplified)
+                if self.optimizer is not None and hasattr(self.optimizer, "state_dict"):
+                    current_state = self.optimizer.state_dict()
+                    if "param_groups" in current_state:
+                        for i, group in enumerate(current_state["param_groups"]):
+                            for param_key in group:
+                                npz_key = f"optim.group{i}.{param_key}"
+                                if npz_key in data:
+                                    group[param_key] = float(data[npz_key])
+
+                # Restore scheduler state
+                if self.scheduler is not None and hasattr(self.scheduler, "state_dict"):
+                    current_state = self.scheduler.state_dict()
+                    for key in current_state:
+                        npz_key = f"scheduler.{key}"
+                        if npz_key in data:
+                            current_state[key] = float(data[npz_key])
+
+                logger.info(
+                    f"Loaded checkpoint (safe format v2): epoch={self.state.epoch}, "
+                    f"step={self.state.global_step}"
+                )
+                return
+
+        except Exception as e:
+            # Not a valid .npz file, try legacy pickle format
+            logger.debug(f"Could not load as .npz format: {e}")
+
+        # Legacy pickle format with security restrictions
+        logger.warning(
+            "Loading checkpoint in legacy pickle format. "
+            "Consider re-saving in safe format using trainer.save_checkpoint()."
+        )
         try:
             with open(path, "rb") as f:
                 checkpoint = RestrictedUnpickler(f).load()

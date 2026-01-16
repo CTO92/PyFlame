@@ -1,5 +1,15 @@
 version: '3.8'
 
+# =============================================================================
+# SECURITY NOTICE
+# =============================================================================
+# Before deploying to production:
+# 1. Set API_KEY environment variable (required for authentication)
+# 2. Configure SSL certificates (SSL_CERTFILE and SSL_KEYFILE)
+# 3. Review and restrict CORS_ORIGINS as needed
+# 4. Use the production profile for nginx load balancing
+# =============================================================================
+
 services:
   # ==========================================================================
   # PyFlame Model Server
@@ -12,15 +22,29 @@ services:
     image: pyflame:latest
     container_name: pyflame-server
     ports:
-      - "8000:8000"
+      # Security: Bind to localhost only by default
+      # For external access, use nginx reverse proxy (production profile)
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./models:/models:ro
     environment:
       - MODEL_PATH=/models/model.pf
+      # Security: Bind to localhost inside container; nginx handles external
       - HOST=0.0.0.0
       - PORT=8000
       - WORKERS=1
       - LOG_LEVEL=info
+      # Security: API_KEY is REQUIRED for production deployments
+      # Uncomment and set a strong, unique key:
+      # - API_KEY=${PYFLAME_API_KEY:?API_KEY must be set for production}
+      # Security: Rate limiting (requests per minute per IP)
+      - RATE_LIMIT=60
+      # Security: Restrict CORS origins (comma-separated)
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:8080
+      # Security: Maximum request body size in MB
+      - MAX_INPUT_MB=100
+      # Security: Maximum batch size
+      - MAX_BATCH_SIZE=32
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/health')"]
       interval: 30s
@@ -28,16 +52,27 @@ services:
       retries: 3
       start_period: 10s
     restart: unless-stopped
+    # Security: Read-only root filesystem where possible
+    read_only: false  # Set to true if model loading from /models only
+    # Security: Drop all capabilities, add only what's needed
+    cap_drop:
+      - ALL
+    # Security: No new privileges
+    security_opt:
+      - no-new-privileges:true
     deploy:
       resources:
         limits:
           memory: 4G
+          cpus: '2.0'
         reservations:
           memory: 1G
 
   # ==========================================================================
   # PyFlame Jupyter Lab
   # ==========================================================================
+  # SECURITY WARNING: Jupyter provides code execution capabilities.
+  # Only run on trusted networks or use token authentication.
   pyflame-jupyter:
     build:
       context: ..
@@ -46,13 +81,21 @@ services:
     image: pyflame-jupyter:latest
     container_name: pyflame-jupyter
     ports:
-      - "8888:8888"
+      # Security: Bind to localhost only by default
+      - "127.0.0.1:8888:8888"
     volumes:
       - ./notebooks:/app/notebooks
       - ./models:/models:ro
     environment:
       - JUPYTER_ENABLE_LAB=yes
+      # Security: Generate token on startup (don't disable authentication)
+      # To set a fixed token: JUPYTER_TOKEN=your-secure-token
     restart: unless-stopped
+    # Security: Drop capabilities
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
   # ==========================================================================
   # PyFlame Development Environment

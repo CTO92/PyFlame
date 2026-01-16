@@ -276,19 +276,22 @@ nn::Sequential ResNet::make_layer(
     nn::Sequential layers;
 
     // Determine if we need a downsample path
-    nn::Module* downsample = nullptr;
+    std::unique_ptr<nn::Sequential> downsample_ptr;
     int64_t expansion = BlockType::EXPANSION;
 
     if (stride != 1 || in_planes_ != planes * expansion) {
         // Create downsample sequential: conv1x1 + bn
-        auto ds = new nn::Sequential();
-        ds->add(std::make_shared<nn::Conv2d>(
+        // Use unique_ptr for exception safety and automatic cleanup
+        downsample_ptr = std::make_unique<nn::Sequential>();
+        downsample_ptr->add(std::make_shared<nn::Conv2d>(
             in_planes_, planes * expansion, 1, stride, 0, 1, false));
-        ds->add(std::make_shared<nn::BatchNorm2d>(planes * expansion));
-        downsample = ds;
+        downsample_ptr->add(std::make_shared<nn::BatchNorm2d>(planes * expansion));
     }
 
     // First block may have stride and downsample
+    // Release ownership to the block (which will manage it via unique_ptr)
+    nn::Module* downsample = downsample_ptr.release();
+
     if constexpr (std::is_same_v<BlockType, Bottleneck>) {
         layers.add(std::make_shared<Bottleneck>(
             in_planes_, planes, stride, downsample,

@@ -4,12 +4,13 @@ Model serving server for PyFlame.
 Provides HTTP/REST API for model inference.
 """
 
+import hmac
 import json
 import logging
 import time
 from collections import defaultdict
-from dataclasses import dataclass
-from typing import Callable, List, Optional
+from dataclasses import dataclass, field
+from typing import Callable, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -19,34 +20,44 @@ class ServerConfig:
     """Configuration for model server.
 
     Attributes:
-        host: Server host
+        host: Server host. Default is 127.0.0.1 (localhost only) for security.
+            Set to "0.0.0.0" to accept connections from all interfaces.
         port: Server port
         workers: Number of worker processes
         timeout: Request timeout in seconds
         max_batch_size: Maximum batch size
         max_input_size_mb: Maximum input size in megabytes
         enable_cors: Enable CORS
-        cors_origins: List of allowed CORS origins (use specific origins in production)
+        cors_origins: List of allowed CORS origins. SECURITY: Must be explicitly
+            configured for production. Empty list disables CORS entirely.
+            Default (None) allows localhost origins only for development.
         api_prefix: API route prefix
-        api_key: Optional API key for authentication
-        rate_limit_per_minute: Rate limit per client IP per minute (0 = disabled)
+        api_key: Optional API key for authentication. SECURITY: Strongly
+            recommended for production deployments.
+        rate_limit_per_minute: Rate limit per client IP per minute (0 = disabled).
+            SECURITY WARNING: This is per-worker, in-memory rate limiting only.
+            It does NOT provide protection in multi-worker or distributed deployments.
+            For production, use an external rate limiter (Redis, nginx, etc.).
+            Disabled by default to avoid false sense of security.
         ssl_certfile: Path to SSL certificate file
         ssl_keyfile: Path to SSL key file
+        warmup_input_shape: Shape of dummy input for model warmup (default: (1, 10))
     """
 
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"  # Security: Default to localhost only
     port: int = 8000
     workers: int = 1
     timeout: int = 60
     max_batch_size: int = 32
     max_input_size_mb: float = 100.0
-    enable_cors: bool = True
-    cors_origins: List[str] = None  # None defaults to localhost only
+    enable_cors: bool = False  # Security: Disabled by default
+    cors_origins: List[str] = None  # Must be explicitly configured
     api_prefix: str = "/v1"
     api_key: Optional[str] = None
-    rate_limit_per_minute: int = 0
+    rate_limit_per_minute: int = 0  # Disabled - use external rate limiter
     ssl_certfile: Optional[str] = None
     ssl_keyfile: Optional[str] = None
+    warmup_input_shape: Tuple[int, ...] = (1, 10)
 
 
 class ModelServer:
@@ -124,33 +135,99 @@ class ModelServer:
                 response.headers["X-Frame-Options"] = "DENY"
                 response.headers["X-XSS-Protection"] = "1; mode=block"
                 response.headers["Cache-Control"] = "no-store"
+                response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+                response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
                 return response
 
         app.add_middleware(SecurityHeadersMiddleware)
 
+        # Request validation middleware for Content-Type and size limits
+        max_input_mb = self.config.max_input_size_mb
+
+        class RequestValidationMiddleware(BaseHTTPMiddleware):
+            async def dispatch(self, request: Request, call_next):
+                # Security: Validate Content-Type for POST requests
+                if request.method == "POST":
+                    content_type = request.headers.get("content-type", "")
+                    # Allow JSON content type (with optional charset)
+                    if not content_type.startswith("application/json"):
+                        from starlette.responses import JSONResponse
+                        return JSONResponse(
+                            status_code=415,
+                            content={"detail": "Content-Type must be application/json"}
+                        )
+
+                    # Security: Check Content-Length before processing
+                    content_length = request.headers.get("content-length")
+                    if content_length:
+                        try:
+                            size_bytes = int(content_length)
+                            max_bytes = int(max_input_mb * 1024 * 1024)
+                            if size_bytes > max_bytes:
+                                return JSONResponse(
+                                    status_code=413,
+                                    content={
+                                        "detail": f"Request body too large ({size_bytes} bytes). "
+                                                  f"Maximum: {max_bytes} bytes"
+                                    }
+                                )
+                        except ValueError:
+                            return JSONResponse(
+                                status_code=400,
+                                content={"detail": "Invalid Content-Length header"}
+                            )
+
+                return await call_next(request)
+
+        app.add_middleware(RequestValidationMiddleware)
+
         # Enable CORS if configured with restricted origins
         if self.config.enable_cors:
-            # Default to localhost only if no origins specified
-            allowed_origins = self.config.cors_origins or [
-                "http://localhost:3000",
-                "http://localhost:8080",
-                "http://127.0.0.1:3000",
-                "http://127.0.0.1:8080",
-            ]
-            app.add_middleware(
-                CORSMiddleware,
-                allow_origins=allowed_origins,
-                allow_credentials=False,  # Don't allow credentials with CORS
-                allow_methods=["GET", "POST"],
-                allow_headers=["Content-Type", "Authorization", "X-API-Key"],
-            )
+            if self.config.cors_origins is None:
+                # Development mode: allow localhost only with warning
+                logger.warning(
+                    "CORS enabled without explicit origins. Using localhost defaults. "
+                    "For production, explicitly configure cors_origins in ServerConfig."
+                )
+                allowed_origins = [
+                    "http://localhost:3000",
+                    "http://localhost:8080",
+                    "http://127.0.0.1:3000",
+                    "http://127.0.0.1:8080",
+                ]
+            elif not self.config.cors_origins:
+                # Empty list provided - disable CORS
+                logger.info("CORS origins list is empty; CORS disabled.")
+                allowed_origins = None
+            else:
+                # Explicit origins configured
+                allowed_origins = self.config.cors_origins
+                # Security: Warn about wildcard origins
+                if "*" in allowed_origins:
+                    logger.warning(
+                        "SECURITY WARNING: CORS allows all origins ('*'). "
+                        "This is insecure for production deployments."
+                    )
+
+            if allowed_origins:
+                app.add_middleware(
+                    CORSMiddleware,
+                    allow_origins=allowed_origins,
+                    allow_credentials=False,  # Don't allow credentials with CORS
+                    allow_methods=["GET", "POST"],
+                    allow_headers=["Content-Type", "Authorization", "X-API-Key"],
+                )
 
         # API key authentication
         api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
         async def verify_api_key(api_key: str = Depends(api_key_header)):
             if self.config.api_key is not None:
-                if api_key != self.config.api_key:
+                # Use timing-safe comparison to prevent timing attacks
+                if api_key is None or not hmac.compare_digest(
+                    api_key.encode("utf-8"), self.config.api_key.encode("utf-8")
+                ):
+                    logger.warning("Failed API key authentication attempt")
                     raise HTTPException(
                         status_code=401, detail="Invalid or missing API key"
                     )
@@ -313,8 +390,10 @@ class ModelServer:
             try:
                 import numpy as np
 
-                # Create dummy input (assumes 2D input, adjust as needed)
-                dummy_input = np.random.randn(1, 10).astype(np.float32)
+                # Create dummy input using configurable warmup shape
+                dummy_input = np.random.randn(*self.config.warmup_input_shape).astype(
+                    np.float32
+                )
 
                 try:
                     import pyflame as pf
@@ -325,7 +404,11 @@ class ModelServer:
 
                 self._engine.warmup(dummy_input, num_iterations=iterations)
                 logger.info(f"Model warmed up with {iterations} iterations")
-                return {"status": "warmed up", "iterations": iterations}
+                return {
+                    "status": "warmed up",
+                    "iterations": iterations,
+                    "input_shape": self.config.warmup_input_shape,
+                }
 
             except Exception as e:
                 logger.error(f"Warmup error: {e}", exc_info=True)
@@ -414,7 +497,7 @@ def create_app(
 
 def serve(
     model,
-    host: str = "0.0.0.0",
+    host: str = "127.0.0.1",  # Security: Default to localhost only
     port: int = 8000,
     **kwargs,
 ):
@@ -424,12 +507,14 @@ def serve(
 
     Args:
         model: PyFlame model
-        host: Server host
+        host: Server host (default: 127.0.0.1 for security).
+            Use "0.0.0.0" to accept connections from all interfaces.
         port: Server port
         **kwargs: Additional ServerConfig arguments
 
     Example:
         >>> serve(model, port=8080)
+        >>> serve(model, host="0.0.0.0", port=8080)  # All interfaces
     """
     config = ServerConfig(host=host, port=port, **kwargs)
     server = ModelServer(model, config)
@@ -440,25 +525,42 @@ def serve(
 class SimpleModelServer:
     """Simple HTTP server for model inference (no dependencies).
 
-    Use this when FastAPI is not available.
+    WARNING: This server is intended for LOCAL DEVELOPMENT ONLY.
+    It lacks many security features present in the main ModelServer:
+    - No TLS/HTTPS support
+    - No authentication
+    - Basic rate limiting only
+    - Limited input validation
+
+    For production deployments, use ModelServer with FastAPI instead.
 
     Example:
         >>> server = SimpleModelServer(model, port=8000)
         >>> server.serve()
     """
 
+    # Security: Maximum request size (10 MB)
+    MAX_REQUEST_SIZE = 10 * 1024 * 1024
+    # Security: Maximum batch size
+    MAX_BATCH_SIZE = 32
+    # Security: Basic rate limiting (requests per minute per IP)
+    RATE_LIMIT_PER_MINUTE = 60
+
     def __init__(
         self,
         model,
-        host: str = "0.0.0.0",
+        host: str = "127.0.0.1",  # Security: Default to localhost only
         port: int = 8000,
     ):
         """Initialize simple server.
 
         Args:
             model: PyFlame model
-            host: Server host
+            host: Server host (default: 127.0.0.1 for security)
             port: Server port
+
+        Warning:
+            This server is for development only. Use ModelServer for production.
         """
         self.model = model
         self.host = host
@@ -467,33 +569,126 @@ class SimpleModelServer:
         if hasattr(self.model, "eval"):
             self.model.eval()
 
+        # Security: Warn if binding to all interfaces
+        if host == "0.0.0.0":
+            logger.warning(
+                "SimpleModelServer binding to 0.0.0.0 exposes the server on all "
+                "network interfaces. This server lacks production security features. "
+                "Use ModelServer with FastAPI for production deployments."
+            )
+
     def serve(self):
         """Start the server."""
         from http.server import BaseHTTPRequestHandler, HTTPServer
 
         model = self.model
+        max_request_size = self.MAX_REQUEST_SIZE
+        max_batch_size = self.MAX_BATCH_SIZE
+        rate_limit = self.RATE_LIMIT_PER_MINUTE
+
+        # Security: Simple in-memory rate limiting
+        rate_limit_state = defaultdict(list)
 
         class Handler(BaseHTTPRequestHandler):
+            def _send_security_headers(self):
+                """Add security headers to response."""
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("X-Frame-Options", "DENY")
+                self.send_header("Cache-Control", "no-store")
+
+            def _check_rate_limit(self) -> bool:
+                """Check if request is rate limited. Returns True if allowed."""
+                if rate_limit <= 0:
+                    return True
+                client_ip = self.client_address[0]
+                current_time = time.time()
+                # Clean old entries
+                rate_limit_state[client_ip] = [
+                    t for t in rate_limit_state[client_ip] if current_time - t < 60
+                ]
+                if len(rate_limit_state[client_ip]) >= rate_limit:
+                    return False
+                rate_limit_state[client_ip].append(current_time)
+                return True
+
             def do_GET(self):
                 if self.path == "/health":
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
+                    self._send_security_headers()
                     self.end_headers()
                     self.wfile.write(json.dumps({"status": "healthy"}).encode())
                 else:
                     self.send_response(404)
+                    self._send_security_headers()
                     self.end_headers()
 
             def do_POST(self):
+                # Security: Rate limiting
+                if not self._check_rate_limit():
+                    self.send_response(429)
+                    self.send_header("Content-Type", "application/json")
+                    self._send_security_headers()
+                    self.end_headers()
+                    self.wfile.write(
+                        json.dumps({"error": "Rate limit exceeded"}).encode()
+                    )
+                    return
+
                 if self.path == "/predict":
                     try:
-                        content_length = int(self.headers["Content-Length"])
+                        # Security: Validate content length
+                        content_length_header = self.headers.get("Content-Length")
+                        if not content_length_header:
+                            raise ValueError("Missing Content-Length header")
+
+                        content_length = int(content_length_header)
+                        if content_length > max_request_size:
+                            self.send_response(413)
+                            self.send_header("Content-Type", "application/json")
+                            self._send_security_headers()
+                            self.end_headers()
+                            self.wfile.write(
+                                json.dumps({"error": "Request too large"}).encode()
+                            )
+                            return
+
                         body = self.rfile.read(content_length)
                         data = json.loads(body)
+
+                        # Security: Validate input structure
+                        if "inputs" not in data:
+                            raise ValueError("Missing 'inputs' field")
 
                         import numpy as np
 
                         inputs = np.array(data["inputs"], dtype=np.float32)
+
+                        # Security: Validate batch size
+                        if len(inputs.shape) > 0 and inputs.shape[0] > max_batch_size:
+                            self.send_response(400)
+                            self.send_header("Content-Type", "application/json")
+                            self._send_security_headers()
+                            self.end_headers()
+                            self.wfile.write(
+                                json.dumps(
+                                    {"error": f"Batch size exceeds maximum ({max_batch_size})"}
+                                ).encode()
+                            )
+                            return
+
+                        # Security: Check for NaN/Inf
+                        if np.any(np.isnan(inputs)) or np.any(np.isinf(inputs)):
+                            self.send_response(400)
+                            self.send_header("Content-Type", "application/json")
+                            self._send_security_headers()
+                            self.end_headers()
+                            self.wfile.write(
+                                json.dumps(
+                                    {"error": "Input contains invalid values (NaN or Inf)"}
+                                ).encode()
+                            )
+                            return
 
                         try:
                             import pyflame as pf
@@ -517,21 +712,46 @@ class SimpleModelServer:
 
                         self.send_response(200)
                         self.send_header("Content-Type", "application/json")
+                        self._send_security_headers()
                         self.end_headers()
                         self.wfile.write(json.dumps(response).encode())
 
-                    except Exception as e:
+                    except json.JSONDecodeError:
+                        self.send_response(400)
+                        self.send_header("Content-Type", "application/json")
+                        self._send_security_headers()
+                        self.end_headers()
+                        self.wfile.write(
+                            json.dumps({"error": "Invalid JSON"}).encode()
+                        )
+                    except ValueError as e:
+                        self.send_response(400)
+                        self.send_header("Content-Type", "application/json")
+                        self._send_security_headers()
+                        self.end_headers()
+                        self.wfile.write(
+                            json.dumps({"error": str(e)}).encode()
+                        )
+                    except Exception:
+                        # Security: Don't leak internal error details
+                        logger.exception("Inference error in SimpleModelServer")
                         self.send_response(500)
                         self.send_header("Content-Type", "application/json")
+                        self._send_security_headers()
                         self.end_headers()
-                        self.wfile.write(json.dumps({"error": str(e)}).encode())
+                        self.wfile.write(
+                            json.dumps({"error": "Internal server error"}).encode()
+                        )
                 else:
                     self.send_response(404)
+                    self._send_security_headers()
                     self.end_headers()
 
             def log_message(self, format, *args):
                 pass  # Suppress logs
 
         server = HTTPServer((self.host, self.port), Handler)
-        print(f"PyFlame Model Server running at http://{self.host}:{self.port}")
+        print(f"PyFlame Simple Model Server (DEVELOPMENT ONLY)")
+        print(f"Running at http://{self.host}:{self.port}")
+        print(f"WARNING: Use ModelServer with FastAPI for production deployments.")
         server.serve_forever()
