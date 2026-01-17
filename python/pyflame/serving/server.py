@@ -4,6 +4,7 @@ Model serving server for PyFlame.
 Provides HTTP/REST API for model inference.
 """
 
+import asyncio
 import hmac
 import json
 import logging
@@ -13,6 +14,9 @@ from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+# Security: Maximum warmup timeout in seconds
+MAX_WARMUP_TIMEOUT_SECONDS = 120
 
 
 @dataclass
@@ -31,6 +35,8 @@ class ServerConfig:
         cors_origins: List of allowed CORS origins. SECURITY: Must be explicitly
             configured for production. Empty list disables CORS entirely.
             Default (None) allows localhost origins only for development.
+        strict_cors: If True, reject wildcard ('*') CORS origins. SECURITY:
+            Enable this for production to prevent overly permissive CORS.
         api_prefix: API route prefix
         api_key: Optional API key for authentication. SECURITY: Strongly
             recommended for production deployments.
@@ -42,6 +48,7 @@ class ServerConfig:
         ssl_certfile: Path to SSL certificate file
         ssl_keyfile: Path to SSL key file
         warmup_input_shape: Shape of dummy input for model warmup (default: (1, 10))
+        warmup_timeout_seconds: Maximum time for warmup operations (default: 60)
     """
 
     host: str = "127.0.0.1"  # Security: Default to localhost only
@@ -52,12 +59,14 @@ class ServerConfig:
     max_input_size_mb: float = 100.0
     enable_cors: bool = False  # Security: Disabled by default
     cors_origins: List[str] = None  # Must be explicitly configured
+    strict_cors: bool = False  # Security: Enable for production
     api_prefix: str = "/v1"
     api_key: Optional[str] = None
     rate_limit_per_minute: int = 0  # Disabled - use external rate limiter
     ssl_certfile: Optional[str] = None
     ssl_keyfile: Optional[str] = None
     warmup_input_shape: Tuple[int, ...] = (1, 10)
+    warmup_timeout_seconds: int = 60  # Security: Timeout for warmup operations
 
 
 class ModelServer:
@@ -131,12 +140,22 @@ class ModelServer:
         class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             async def dispatch(self, request: Request, call_next):
                 response = await call_next(request)
+                # Security headers
                 response.headers["X-Content-Type-Options"] = "nosniff"
                 response.headers["X-Frame-Options"] = "DENY"
                 response.headers["X-XSS-Protection"] = "1; mode=block"
                 response.headers["Cache-Control"] = "no-store"
                 response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
                 response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
+                # Security: Content Security Policy - defense in depth
+                response.headers["Content-Security-Policy"] = (
+                    "default-src 'none'; "
+                    "frame-ancestors 'none'; "
+                    "base-uri 'none'; "
+                    "form-action 'none'"
+                )
+                # Security: Referrer policy
+                response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
                 return response
 
         app.add_middleware(SecurityHeadersMiddleware)
@@ -202,12 +221,21 @@ class ModelServer:
             else:
                 # Explicit origins configured
                 allowed_origins = self.config.cors_origins
-                # Security: Warn about wildcard origins
+                # Security: Handle wildcard origins
                 if "*" in allowed_origins:
-                    logger.warning(
-                        "SECURITY WARNING: CORS allows all origins ('*'). "
-                        "This is insecure for production deployments."
-                    )
+                    if self.config.strict_cors:
+                        # Strict mode: reject wildcard origins entirely
+                        raise ValueError(
+                            "SECURITY ERROR: Wildcard CORS origin ('*') is not allowed "
+                            "when strict_cors=True. Please specify explicit origins or "
+                            "set strict_cors=False (not recommended for production)."
+                        )
+                    else:
+                        logger.warning(
+                            "SECURITY WARNING: CORS allows all origins ('*'). "
+                            "This is insecure for production deployments. "
+                            "Enable strict_cors=True to reject wildcard origins."
+                        )
 
             if allowed_origins:
                 app.add_middleware(
@@ -233,22 +261,45 @@ class ModelServer:
                     )
             return api_key
 
-        # Rate limiting dependency
+        # Rate limiting dependency with headers
+        rate_limit_config = self.config.rate_limit_per_minute
+
         async def check_rate_limit(request: Request):
-            if self.config.rate_limit_per_minute <= 0:
-                return
+            if rate_limit_config <= 0:
+                return {"limit": 0, "remaining": 0, "reset": 0}
+
             client_ip = request.client.host
             current_time = time.time()
+            window_start = current_time - 60
+
             # Clean old entries
             rate_limit_state[client_ip] = [
-                t for t in rate_limit_state[client_ip] if current_time - t < 60
+                t for t in rate_limit_state[client_ip] if t > window_start
             ]
-            if len(rate_limit_state[client_ip]) >= self.config.rate_limit_per_minute:
+
+            current_count = len(rate_limit_state[client_ip])
+            remaining = max(0, rate_limit_config - current_count)
+            reset_time = int(window_start + 60)
+
+            if current_count >= rate_limit_config:
                 logger.warning(f"Rate limit exceeded for {client_ip}")
                 raise HTTPException(
-                    status_code=429, detail="Rate limit exceeded. Try again later."
+                    status_code=429,
+                    detail="Rate limit exceeded. Try again later.",
+                    headers={
+                        "X-RateLimit-Limit": str(rate_limit_config),
+                        "X-RateLimit-Remaining": "0",
+                        "X-RateLimit-Reset": str(reset_time),
+                        "Retry-After": str(reset_time - int(current_time)),
+                    },
                 )
+
             rate_limit_state[client_ip].append(current_time)
+            return {
+                "limit": rate_limit_config,
+                "remaining": remaining - 1,  # After this request
+                "reset": reset_time,
+            }
 
         # Create inference engine
         engine_config = InferenceConfig(
@@ -289,9 +340,11 @@ class ModelServer:
             request: PredictRequest,
             req: Request,
             _: str = Depends(verify_api_key),
-            __: None = Depends(check_rate_limit),
+            rate_info: dict = Depends(check_rate_limit),
         ):
             """Run model prediction with input validation."""
+            from starlette.responses import JSONResponse
+
             try:
                 import numpy as np
 
@@ -352,10 +405,21 @@ class ModelServer:
                     f"Prediction from {req.client.host}: {input_size_mb:.2f}MB, {inference_time:.2f}ms"
                 )
 
-                return PredictResponse(
+                # Build response with rate limit headers
+                response_data = PredictResponse(
                     outputs=outputs if isinstance(outputs[0], list) else [outputs],
                     inference_time_ms=inference_time,
                 )
+
+                response = JSONResponse(content=response_data.model_dump())
+
+                # Add rate limit headers if rate limiting is enabled
+                if rate_info["limit"] > 0:
+                    response.headers["X-RateLimit-Limit"] = str(rate_info["limit"])
+                    response.headers["X-RateLimit-Remaining"] = str(rate_info["remaining"])
+                    response.headers["X-RateLimit-Reset"] = str(rate_info["reset"])
+
+                return response
 
             except HTTPException:
                 raise  # Re-raise HTTP exceptions as-is
@@ -376,6 +440,11 @@ class ModelServer:
                 throughput_per_second=s.throughput,
             )
 
+        # Warmup timeout from config (capped by global maximum)
+        warmup_timeout = min(
+            self.config.warmup_timeout_seconds, MAX_WARMUP_TIMEOUT_SECONDS
+        )
+
         @app.post(f"{prefix}/warmup")
         async def warmup(
             iterations: int = 10,
@@ -387,7 +456,8 @@ class ModelServer:
                 raise HTTPException(
                     status_code=400, detail="Iterations must be between 1 and 100"
                 )
-            try:
+
+            async def do_warmup():
                 import numpy as np
 
                 # Create dummy input using configurable warmup shape
@@ -402,14 +472,31 @@ class ModelServer:
                 except Exception:
                     pass
 
-                self._engine.warmup(dummy_input, num_iterations=iterations)
-                logger.info(f"Model warmed up with {iterations} iterations")
+                # Run warmup in a thread pool to avoid blocking
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(
+                    None, self._engine.warmup, dummy_input, iterations
+                )
                 return {
                     "status": "warmed up",
                     "iterations": iterations,
                     "input_shape": self.config.warmup_input_shape,
                 }
 
+            try:
+                # Security: Apply timeout to prevent resource exhaustion
+                result = await asyncio.wait_for(do_warmup(), timeout=warmup_timeout)
+                logger.info(f"Model warmed up with {iterations} iterations")
+                return result
+
+            except asyncio.TimeoutError:
+                logger.error(
+                    f"Warmup timed out after {warmup_timeout}s with {iterations} iterations"
+                )
+                raise HTTPException(
+                    status_code=408,
+                    detail=f"Warmup timed out after {warmup_timeout} seconds",
+                )
             except Exception as e:
                 logger.error(f"Warmup error: {e}", exc_info=True)
                 raise HTTPException(status_code=500, detail="Warmup failed")
@@ -437,6 +524,16 @@ class ModelServer:
 
         if self._app is None:
             self._create_app()
+
+        # Security: Warn about ineffective rate limiting in multi-worker setup
+        if self.config.workers > 1 and self.config.rate_limit_per_minute > 0:
+            logger.warning(
+                "SECURITY WARNING: In-memory rate limiting is enabled with %d workers. "
+                "Rate limits are NOT shared across workers and will be ineffective. "
+                "For production multi-worker deployments, use an external rate limiter "
+                "(Redis, nginx, etc.) and set rate_limit_per_minute=0.",
+                self.config.workers,
+            )
 
         # Prepare uvicorn config
         uvicorn_config = {
@@ -748,7 +845,9 @@ class SimpleModelServer:
                     self.end_headers()
 
             def log_message(self, format, *args):
-                pass  # Suppress logs
+                # Log at DEBUG level instead of suppressing entirely
+                # This allows security auditing while not cluttering normal output
+                logger.debug(format % args)
 
         server = HTTPServer((self.host, self.port), Handler)
         print(f"PyFlame Simple Model Server (DEVELOPMENT ONLY)")

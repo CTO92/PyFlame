@@ -5,17 +5,42 @@ Provides functionality for downloading, caching, and loading pretrained weights.
 """
 
 import hashlib
+import io
 import logging
 import os
 import pickle
+import pickletools
 import shutil
 import ssl
+import stat
 import urllib.error
 import urllib.request
+import warnings
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, FrozenSet, List, Optional, Set
 
 logger = logging.getLogger(__name__)
+
+# Security: Check for SafeTensors availability (preferred format)
+_SAFETENSORS_AVAILABLE = False
+try:
+    import safetensors
+    import safetensors.numpy
+    _SAFETENSORS_AVAILABLE = True
+except ImportError:
+    pass
+
+
+def is_safetensors_available() -> bool:
+    """Check if SafeTensors library is available.
+
+    SafeTensors is the recommended format for model weights as it is
+    inherently safe (no code execution during deserialization).
+
+    Returns:
+        True if safetensors is installed, False otherwise.
+    """
+    return _SAFETENSORS_AVAILABLE
 
 # Network security settings
 DOWNLOAD_TIMEOUT = 300  # 5 minutes max for downloads
@@ -100,9 +125,15 @@ _weight_registry: Dict[str, Dict[str, WeightInfo]] = {
 
 
 def get_cache_dir() -> str:
-    """Get the cache directory for pretrained weights."""
+    """Get the cache directory for pretrained weights.
+
+    Security: Cache directory is created with restrictive permissions (0o700)
+    to prevent other users on shared systems from accessing cached models.
+    """
     cache_dir = os.environ.get("PYFLAME_CACHE_DIR", DEFAULT_CACHE_DIR)
-    os.makedirs(cache_dir, exist_ok=True)
+    if not os.path.exists(cache_dir):
+        # Security: Create with restrictive permissions (owner-only access)
+        os.makedirs(cache_dir, mode=0o700, exist_ok=True)
     return cache_dir
 
 
@@ -167,10 +198,12 @@ def download_weights(
 
     info = weights[weight_name]
 
-    # Setup paths
+    # Setup paths with secure permissions
     cache_dir = get_cache_dir()
     weight_dir = os.path.join(cache_dir, "weights", model_name)
-    os.makedirs(weight_dir, exist_ok=True)
+    if not os.path.exists(weight_dir):
+        # Security: Create with restrictive permissions
+        os.makedirs(weight_dir, mode=0o700, exist_ok=True)
     weight_path = os.path.join(weight_dir, f"{weight_name}.pf")
 
     # Check if already exists
@@ -352,11 +385,16 @@ class RestrictedUnpickler(pickle.Unpickler):
     Security Note: This unpickler uses a strict allowlist approach. Only
     explicitly listed (module, class) pairs are allowed. Module prefix
     matching is NOT used to prevent unsafe classes from slipping through.
+
+    Additional security:
+    - Opcode-level filtering blocks dangerous opcodes
+    - numpy._reconstruct calls are monitored and logged for auditing
+    - All class lookups are logged at DEBUG level for forensics
     """
 
     # Classes that are explicitly allowed (strict allowlist)
     # Format: (module, class_name)
-    SAFE_CLASSES = frozenset(
+    SAFE_CLASSES: FrozenSet[tuple] = frozenset(
         {
             # NumPy core types
             ("numpy", "ndarray"),
@@ -389,9 +427,10 @@ class RestrictedUnpickler(pickle.Unpickler):
             ("builtins", "complex"),
             ("builtins", "slice"),
             ("builtins", "range"),
-            # Collections
-            ("collections", "OrderedDict"),
-            ("collections", "defaultdict"),
+            # Collections - NOTE: OrderedDict and defaultdict removed as they
+            # have __reduce__ methods that could be exploited
+            # ("collections", "OrderedDict"),
+            # ("collections", "defaultdict"),
             # Copy module (for deepcopy support)
             ("copy", "_reconstructor"),
             # Functools (for partial, but NOT arbitrary callables)
@@ -402,7 +441,7 @@ class RestrictedUnpickler(pickle.Unpickler):
 
     # Dangerous classes that should NEVER be allowed
     # These are checked separately to provide clear error messages
-    DANGEROUS_CLASSES = frozenset(
+    DANGEROUS_CLASSES: FrozenSet[tuple] = frozenset(
         {
             ("builtins", "eval"),
             ("builtins", "exec"),
@@ -410,19 +449,47 @@ class RestrictedUnpickler(pickle.Unpickler):
             ("builtins", "open"),
             ("builtins", "input"),
             ("builtins", "__import__"),
+            ("builtins", "getattr"),
+            ("builtins", "setattr"),
+            ("builtins", "delattr"),
             ("os", "system"),
             ("os", "popen"),
+            ("os", "execv"),
+            ("os", "execve"),
+            ("os", "spawnl"),
+            ("os", "spawnle"),
             ("subprocess", "Popen"),
             ("subprocess", "call"),
             ("subprocess", "run"),
+            ("subprocess", "check_output"),
             ("pickle", "loads"),
             ("codecs", "encode"),
             ("codecs", "decode"),
+            ("types", "FunctionType"),
+            ("types", "CodeType"),
+            ("types", "LambdaType"),
         }
     )
 
+    # Security: Track numpy._reconstruct usage for monitoring
+    # This is a potential attack vector that requires special attention
+    MONITORED_CLASSES: FrozenSet[tuple] = frozenset(
+        {
+            ("numpy.core.multiarray", "_reconstruct"),
+            ("numpy._core.multiarray", "_reconstruct"),
+        }
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._reconstruct_count = 0
+        self._reconstruct_limit = 10000  # Reasonable limit for model files
+
     def find_class(self, module: str, name: str):
         """Only allow explicitly whitelisted classes to be unpickled."""
+        # Debug logging for all class lookups (useful for forensics)
+        logger.debug(f"Pickle class lookup: {module}.{name}")
+
         # Check for explicitly dangerous classes first
         if (module, name) in self.DANGEROUS_CLASSES:
             logger.error(
@@ -436,6 +503,33 @@ class RestrictedUnpickler(pickle.Unpickler):
 
         # Check explicit class allowlist (strict - no module prefix matching)
         if (module, name) in self.SAFE_CLASSES:
+            # Security: Monitor numpy._reconstruct usage
+            if (module, name) in self.MONITORED_CLASSES:
+                self._reconstruct_count += 1
+
+                # Log first occurrence and periodically thereafter
+                if self._reconstruct_count == 1:
+                    logger.info(
+                        f"SECURITY MONITOR: numpy._reconstruct called during unpickling. "
+                        f"This is expected for numpy array deserialization but is monitored "
+                        f"as a potential attack vector."
+                    )
+                elif self._reconstruct_count % 1000 == 0:
+                    logger.debug(
+                        f"SECURITY MONITOR: numpy._reconstruct call count: {self._reconstruct_count}"
+                    )
+
+                # Prevent excessive reconstruct calls (potential DoS or exploit)
+                if self._reconstruct_count > self._reconstruct_limit:
+                    logger.error(
+                        f"SECURITY: Excessive numpy._reconstruct calls ({self._reconstruct_count}). "
+                        f"This may indicate an attempted attack or corrupted file."
+                    )
+                    raise pickle.UnpicklingError(
+                        f"Too many numpy._reconstruct calls ({self._reconstruct_count}). "
+                        f"File may be malicious or corrupted."
+                    )
+
             return super().find_class(module, name)
 
         # Security logging: log all blocked unpickle attempts
@@ -449,28 +543,239 @@ class RestrictedUnpickler(pickle.Unpickler):
             f"Consider using SafeTensors format instead."
         )
 
+    def get_security_stats(self) -> Dict[str, Any]:
+        """Return security statistics from this unpickling session.
 
-def _load_state_dict(path: str) -> Dict[str, Any]:
+        Useful for security auditing and monitoring.
+        """
+        return {
+            "reconstruct_count": self._reconstruct_count,
+            "reconstruct_limit": self._reconstruct_limit,
+        }
+
+
+def _scan_pickle_opcodes(data: bytes) -> None:
+    """Scan pickle data for dangerous opcodes before unpickling.
+
+    Security: This provides an additional layer of defense by detecting
+    potentially dangerous pickle constructs at the opcode level, before
+    the unpickler even processes them.
+
+    Args:
+        data: Raw pickle bytes to scan
+
+    Raises:
+        pickle.UnpicklingError: If dangerous opcodes are detected
+    """
+    # Opcodes that could be used to execute arbitrary code
+    # Even with class restrictions, these can be abused
+    DANGEROUS_OPCODES: Set[str] = {
+        "GLOBAL",  # Can reference arbitrary globals
+        "STACK_GLOBAL",  # Can reference arbitrary stack globals
+        "INST",  # Creates instances (legacy, but still dangerous)
+        "OBJ",  # Creates objects
+        "NEWOBJ",  # Creates new objects
+        "NEWOBJ_EX",  # Creates new objects with kwargs
+        "REDUCE",  # Calls arbitrary callables (most dangerous)
+        "BUILD",  # Calls __setstate__ which could be abused
+        "EXT1",  # Extension registry (could reference dangerous code)
+        "EXT2",  # Extension registry
+        "EXT4",  # Extension registry
+    }
+
+    # Opcodes that are allowed (data-only operations)
+    SAFE_OPCODES: Set[str] = {
+        "PROTO",
+        "STOP",
+        "FRAME",
+        "NONE",
+        "NEWTRUE",
+        "NEWFALSE",
+        "INT",
+        "BININT",
+        "BININT1",
+        "BININT2",
+        "LONG",
+        "LONG1",
+        "LONG4",
+        "FLOAT",
+        "BINFLOAT",
+        "SHORT_BINSTRING",
+        "BINSTRING",
+        "SHORT_BINBYTES",
+        "BINBYTES",
+        "BINBYTES8",
+        "SHORT_BINUNICODE",
+        "BINUNICODE",
+        "BINUNICODE8",
+        "BYTEARRAY8",
+        "EMPTY_LIST",
+        "APPEND",
+        "APPENDS",
+        "LIST",
+        "EMPTY_TUPLE",
+        "TUPLE",
+        "TUPLE1",
+        "TUPLE2",
+        "TUPLE3",
+        "EMPTY_DICT",
+        "DICT",
+        "SETITEM",
+        "SETITEMS",
+        "EMPTY_SET",
+        "ADDITEMS",
+        "FROZENSET",
+        "POP",
+        "DUP",
+        "MARK",
+        "POP_MARK",
+        "GET",
+        "BINGET",
+        "LONG_BINGET",
+        "PUT",
+        "BINPUT",
+        "LONG_BINPUT",
+        "MEMOIZE",
+        "NEXT_BUFFER",
+        "READONLY_BUFFER",
+    }
+
+    try:
+        ops = list(pickletools.genops(io.BytesIO(data)))
+    except Exception as e:
+        logger.error(f"SECURITY: Failed to parse pickle opcodes: {e}")
+        raise pickle.UnpicklingError(
+            "Failed to parse pickle data. File may be corrupted or malformed."
+        )
+
+    dangerous_found = []
+    for op, arg, pos in ops:
+        opname = op.name
+        if opname in DANGEROUS_OPCODES:
+            dangerous_found.append((opname, pos))
+
+    if dangerous_found:
+        # Log detailed info for security auditing
+        op_summary = ", ".join(f"{name}@{pos}" for name, pos in dangerous_found[:5])
+        if len(dangerous_found) > 5:
+            op_summary += f", ... ({len(dangerous_found)} total)"
+
+        logger.error(
+            f"SECURITY ALERT: Pickle data contains dangerous opcodes: {op_summary}. "
+            f"This is a strong indicator of a malicious model file."
+        )
+        raise pickle.UnpicklingError(
+            f"BLOCKED: Pickle data contains dangerous opcodes that could execute "
+            f"arbitrary code. Found: {op_summary}. "
+            f"This file may be malicious. Consider using SafeTensors format."
+        )
+
+
+def _load_safetensors(path: str) -> Dict[str, Any]:
+    """Load a state dict from SafeTensors file.
+
+    SafeTensors is the RECOMMENDED format as it cannot execute arbitrary code.
+    This function is inherently safe and does not require the same security
+    measures as pickle loading.
+
+    Args:
+        path: Path to .safetensors file
+
+    Returns:
+        State dict with numpy arrays
+    """
+    if not _SAFETENSORS_AVAILABLE:
+        raise ImportError(
+            "SafeTensors is not installed. Install with: pip install safetensors"
+        )
+
+    logger.info(f"Loading model weights from SafeTensors format (secure): {path}")
+    return safetensors.numpy.load_file(path)
+
+
+def _load_state_dict(path: str, allow_pickle: bool = True) -> Dict[str, Any]:
     """Load a state dict from file with security restrictions.
 
-    Uses a restricted unpickler to prevent arbitrary code execution
-    from malicious model files.
+    Security: This function prefers SafeTensors format when available.
+    For pickle files, it uses multiple layers of defense:
+    1. Opcode-level scanning to detect dangerous constructs
+    2. Restricted unpickler with class allowlisting
+
+    Args:
+        path: Path to model weights file (.safetensors or .pf/.pkl)
+        allow_pickle: If False, refuse to load pickle files (security hardening)
+
+    Returns:
+        State dict with model weights
     """
-    import pickle
+    # Security: Prefer SafeTensors format (no code execution possible)
+    if path.endswith(".safetensors"):
+        return _load_safetensors(path)
+
+    # Check for SafeTensors version of the file
+    safetensors_path = path.rsplit(".", 1)[0] + ".safetensors"
+    if os.path.exists(safetensors_path):
+        logger.info(
+            f"Found SafeTensors version of model at {safetensors_path}. "
+            f"Using SafeTensors format for security."
+        )
+        return _load_safetensors(safetensors_path)
+
+    # Security: Option to refuse pickle files entirely
+    if not allow_pickle:
+        raise SecurityError(
+            f"Pickle loading is disabled (allow_pickle=False). "
+            f"Convert the model to SafeTensors format for secure loading. "
+            f"File: {path}"
+        )
+
+    # Security: Warn about pickle usage
+    if _SAFETENSORS_AVAILABLE:
+        warnings.warn(
+            f"Loading model from pickle format. Consider converting to SafeTensors "
+            f"for improved security. Pickle files can execute arbitrary code.",
+            SecurityWarning,
+            stacklevel=3,
+        )
+    else:
+        logger.warning(
+            "SECURITY: Loading pickle file without SafeTensors available. "
+            "Install safetensors package for safer model loading."
+        )
 
     with open(path, "rb") as f:
-        try:
-            return RestrictedUnpickler(f).load()
-        except pickle.UnpicklingError as e:
-            # Security logging: failed unpickle indicates potential malicious file
-            logger.error(
-                f"SECURITY: Failed to unpickle model file '{path}': {e}. "
-                f"The file may be corrupted or contain malicious content."
-            )
-            raise RuntimeError(
-                f"Failed to load model file '{path}': {e}. "
-                f"The file may be corrupted or contain unsafe content."
-            )
+        data = f.read()
+
+    # Security: First pass - scan opcodes for dangerous patterns
+    # This catches many attacks before the unpickler even runs
+    try:
+        _scan_pickle_opcodes(data)
+    except pickle.UnpicklingError:
+        raise  # Re-raise with original message
+    except Exception as e:
+        logger.error(f"SECURITY: Opcode scan failed for '{path}': {e}")
+        raise RuntimeError(
+            f"Failed to scan model file '{path}' for security: {e}"
+        )
+
+    # Security: Second pass - use restricted unpickler
+    try:
+        return RestrictedUnpickler(io.BytesIO(data)).load()
+    except pickle.UnpicklingError as e:
+        # Security logging: failed unpickle indicates potential malicious file
+        logger.error(
+            f"SECURITY: Failed to unpickle model file '{path}': {e}. "
+            f"The file may be corrupted or contain malicious content."
+        )
+        raise RuntimeError(
+            f"Failed to load model file '{path}': {e}. "
+            f"The file may be corrupted or contain unsafe content."
+        )
+
+
+class SecurityError(Exception):
+    """Raised when a security check fails during model loading."""
+    pass
 
 
 def _load_state_dict_into_model(

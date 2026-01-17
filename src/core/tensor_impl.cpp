@@ -2,6 +2,7 @@
 #include "pyflame/ir/shape_inference.hpp"
 #include <cmath>
 #include <algorithm>
+#include <limits>
 
 namespace pyflame {
 
@@ -90,7 +91,19 @@ void TensorImpl::execute_cpu() {
         case ir::OpType::DIV:
             if (input_data[0] && input_data[1]) {
                 for (int64_t i = 0; i < numel; ++i) {
-                    output[i] = input_data[0][i] / input_data[1][i];
+                    // Security: Check for division by zero
+                    if (input_data[1][i] == 0.0f) {
+                        // Return IEEE 754 infinity or NaN as appropriate
+                        if (input_data[0][i] == 0.0f) {
+                            output[i] = std::numeric_limits<float>::quiet_NaN();
+                        } else if (input_data[0][i] > 0.0f) {
+                            output[i] = std::numeric_limits<float>::infinity();
+                        } else {
+                            output[i] = -std::numeric_limits<float>::infinity();
+                        }
+                    } else {
+                        output[i] = input_data[0][i] / input_data[1][i];
+                    }
                 }
             }
             break;
@@ -213,11 +226,16 @@ void TensorImpl::execute_cpu() {
         case ir::OpType::MEAN: {
             if (input_data[0]) {
                 int64_t input_numel = inputs[0]->numel();
-                float sum = 0.0f;
-                for (int64_t i = 0; i < input_numel; ++i) {
-                    sum += input_data[0][i];
+                // Security: Check for division by zero (empty tensor)
+                if (input_numel == 0) {
+                    output[0] = std::numeric_limits<float>::quiet_NaN();
+                } else {
+                    float sum = 0.0f;
+                    for (int64_t i = 0; i < input_numel; ++i) {
+                        sum += input_data[0][i];
+                    }
+                    output[0] = sum / static_cast<float>(input_numel);
                 }
-                output[0] = sum / static_cast<float>(input_numel);
             }
             break;
         }

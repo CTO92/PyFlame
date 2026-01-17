@@ -39,16 +39,30 @@ public:
     /// @param shape Shape of the tensor (validated for overflow)
     /// @param dtype Data type
     /// @param layout Mesh layout
-    /// @param data_size Optional: actual size of data buffer for validation
+    /// @param data_size Size of data buffer (REQUIRED for security validation)
+    ///
+    /// SECURITY: This function requires the caller to specify the actual data
+    /// buffer size to prevent buffer overread vulnerabilities. The data_size
+    /// parameter is validated against the expected size computed from shape.
     static std::shared_ptr<TensorImpl> from_data(
         const void* data,
         const std::vector<int64_t>& shape,
         DType dtype,
         MeshLayout layout,
-        size_t data_size = 0  // 0 means trust the shape (legacy behavior)
+        size_t data_size
     ) {
         if (!data) {
             throw std::invalid_argument("Data pointer cannot be null");
+        }
+
+        // Security: Require explicit buffer size validation
+        // data_size=0 is no longer accepted (was legacy behavior that could
+        // lead to buffer overreads if caller miscalculates shape)
+        if (data_size == 0) {
+            throw std::invalid_argument(
+                "data_size must be provided for buffer validation. "
+                "This is required for security to prevent buffer overread."
+            );
         }
 
         // Validate shape to prevent overflow attacks
@@ -62,18 +76,21 @@ public:
         // Create tensor spec (numel() and size_bytes() now have overflow checking)
         ir::TensorSpec spec(shape, dtype, layout);
 
-        // Validate buffer size if provided
+        // Security: Validate buffer size matches expected
         size_t expected_bytes = spec.size_bytes();
-        if (data_size > 0 && data_size < expected_bytes) {
+        if (data_size < expected_bytes) {
             throw std::invalid_argument(
                 "Data buffer too small: provided " + std::to_string(data_size) +
-                " bytes, need " + std::to_string(expected_bytes) + " bytes");
+                " bytes, need " + std::to_string(expected_bytes) + " bytes. "
+                "This could indicate a buffer overread vulnerability.");
         }
 
         // Create constant node
         impl->node_ = impl->graph_->create_constant(spec, data);
 
         // Store data immediately (constants are always materialized)
+        // Security: Only copy expected_bytes (not data_size) to prevent
+        // reading beyond shape-defined bounds
         impl->data_ = std::shared_ptr<uint8_t>(
             static_cast<uint8_t*>(Allocator::allocate(expected_bytes)),
             [](uint8_t* p) { Allocator::deallocate(p); }

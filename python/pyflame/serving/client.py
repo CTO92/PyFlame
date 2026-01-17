@@ -5,8 +5,13 @@ Provides HTTP client for calling PyFlame model servers.
 """
 
 import json
-from dataclasses import dataclass
+import logging
+import ssl
+import warnings
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Union
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -14,16 +19,20 @@ class ClientConfig:
     """Configuration for model client.
 
     Attributes:
-        base_url: Server base URL
+        base_url: Server base URL (defaults to HTTPS)
         timeout: Request timeout in seconds
         api_prefix: API route prefix
         headers: Additional headers
+        verify_ssl: Whether to verify SSL certificates (default: True)
+        allow_insecure_http: Explicitly allow HTTP connections (default: False)
     """
 
-    base_url: str = "http://localhost:8000"
+    base_url: str = "https://localhost:8000"
     timeout: int = 30
     api_prefix: str = "/v1"
     headers: Optional[Dict[str, str]] = None
+    verify_ssl: bool = True
+    allow_insecure_http: bool = False
 
 
 class ModelClient:
@@ -51,9 +60,59 @@ class ModelClient:
         if config:
             self.config = config
         else:
-            self.config = ClientConfig(base_url=base_url or "http://localhost:8000")
+            self.config = ClientConfig(base_url=base_url or "https://localhost:8000")
+
+        # Security: Warn about insecure HTTP connections
+        self._validate_url_security()
 
         self._session = None
+        self._ssl_context = self._create_ssl_context()
+
+    def _validate_url_security(self) -> None:
+        """Validate URL security and warn about insecure connections."""
+        url = self.config.base_url.lower()
+
+        if url.startswith("http://"):
+            if not self.config.allow_insecure_http:
+                warnings.warn(
+                    "Using insecure HTTP connection. Set allow_insecure_http=True "
+                    "to suppress this warning, or use HTTPS for secure connections.",
+                    SecurityWarning,
+                    stacklevel=3,
+                )
+            logger.warning(
+                "SECURITY: Using insecure HTTP connection to %s. "
+                "Consider using HTTPS for production.",
+                self.config.base_url,
+            )
+
+    def _create_ssl_context(self) -> Optional[ssl.SSLContext]:
+        """Create SSL context for secure connections.
+
+        Returns:
+            SSL context configured for secure connections, or None for HTTP.
+        """
+        if self.config.base_url.lower().startswith("http://"):
+            return None
+
+        if self.config.verify_ssl:
+            # Create a secure SSL context with certificate verification
+            context = ssl.create_default_context()
+            context.check_hostname = True
+            context.verify_mode = ssl.CERT_REQUIRED
+        else:
+            # Allow unverified SSL (not recommended for production)
+            warnings.warn(
+                "SSL certificate verification is disabled. "
+                "This is insecure and not recommended for production.",
+                SecurityWarning,
+                stacklevel=3,
+            )
+            context = ssl.create_default_context()
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+
+        return context
 
     def _get_session(self):
         """Get or create HTTP session."""
@@ -62,6 +121,8 @@ class ModelClient:
                 import requests
 
                 self._session = requests.Session()
+                # Configure SSL verification
+                self._session.verify = self.config.verify_ssl
                 if self.config.headers:
                     self._session.headers.update(self.config.headers)
             except ImportError:
@@ -245,8 +306,11 @@ class ModelClient:
             request = urllib.request.Request(url, method=method)
 
         try:
+            # Security: Use SSL context for HTTPS connections
             with urllib.request.urlopen(
-                request, timeout=self.config.timeout
+                request,
+                timeout=self.config.timeout,
+                context=self._ssl_context,
             ) as response:
                 return json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
@@ -271,7 +335,7 @@ class ModelClient:
 
 
 def connect(
-    url: str = "http://localhost:8000",
+    url: str = "https://localhost:8000",
     **kwargs,
 ) -> ModelClient:
     """Connect to a PyFlame model server.
@@ -279,15 +343,20 @@ def connect(
     Convenience function for creating a client.
 
     Args:
-        url: Server URL
-        **kwargs: Additional ClientConfig arguments
+        url: Server URL (defaults to HTTPS for security)
+        **kwargs: Additional ClientConfig arguments including:
+            - verify_ssl: Whether to verify SSL certificates (default: True)
+            - allow_insecure_http: Allow HTTP connections (default: False)
 
     Returns:
         ModelClient instance
 
     Example:
-        >>> client = connect("http://localhost:8000")
+        >>> client = connect("https://localhost:8000")
         >>> output = client.predict([[1.0, 2.0, 3.0]])
+
+        # For local development with HTTP (not recommended for production):
+        >>> client = connect("http://localhost:8000", allow_insecure_http=True)
     """
     config = ClientConfig(base_url=url, **kwargs)
     return ModelClient(config=config)

@@ -4,8 +4,11 @@ Custom operator registration for PyFlame.
 Allows users to define and register custom operations.
 """
 
+import hashlib
+import inspect
 import logging
 import re
+import time
 import unicodedata
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -62,7 +65,34 @@ _SUSPICIOUS_STRINGS = [
     "env[",
     "environ",
     "getenv",
+    "curl ",
+    "wget ",
+    "chmod ",
+    "base64",
+    "\\x",  # Hex escape sequences
+    "fromhex",
 ]
+
+# Zero-width and invisible characters that could hide malicious code
+_INVISIBLE_CHARS = frozenset([
+    "\u200b",  # Zero-width space
+    "\u200c",  # Zero-width non-joiner
+    "\u200d",  # Zero-width joiner
+    "\u2060",  # Word joiner
+    "\u2061",  # Function application
+    "\u2062",  # Invisible times
+    "\u2063",  # Invisible separator
+    "\u2064",  # Invisible plus
+    "\ufeff",  # Zero-width no-break space (BOM)
+    "\u00ad",  # Soft hyphen
+    "\u034f",  # Combining grapheme joiner
+    "\u061c",  # Arabic letter mark
+    "\u115f",  # Hangul choseong filler
+    "\u1160",  # Hangul jungseong filler
+    "\u17b4",  # Khmer vowel inherent aq
+    "\u17b5",  # Khmer vowel inherent aa
+    "\u180e",  # Mongolian vowel separator
+])
 
 
 def _normalize_unicode(text: str) -> str:
@@ -152,6 +182,29 @@ def _validate_csl_template(template: str, op_name: str) -> None:
             f"({len(template)} > {_MAX_TEMPLATE_SIZE} bytes)"
         )
 
+    # Security: Check for invisible/zero-width characters that could hide code
+    invisible_found = [c for c in template if c in _INVISIBLE_CHARS]
+    if invisible_found:
+        logger.error(
+            f"SECURITY: CSL template for '{op_name}' contains {len(invisible_found)} "
+            f"invisible/zero-width characters which could hide malicious code"
+        )
+        raise ValueError(
+            f"CSL template for '{op_name}' contains invisible characters. "
+            f"These could be used to hide malicious code."
+        )
+
+    # Security: Check for control characters (except newline, tab, carriage return)
+    control_chars = [c for c in template if ord(c) < 32 and c not in '\n\t\r']
+    if control_chars:
+        logger.error(
+            f"SECURITY: CSL template for '{op_name}' contains {len(control_chars)} "
+            f"control characters"
+        )
+        raise ValueError(
+            f"CSL template for '{op_name}' contains invalid control characters"
+        )
+
     # Security: Normalize Unicode to detect homoglyph attacks
     # This converts look-alike characters (e.g., Cyrillic 'а' -> ASCII 'a')
     normalized_template = _normalize_unicode(template)
@@ -165,10 +218,31 @@ def _validate_csl_template(template: str, op_name: str) -> None:
             f"CSL template for '{op_name}' contains invalid null bytes"
         )
 
+    # Security: Check for multi-line obfuscation (keywords split across lines)
+    # Remove all whitespace to detect split keywords
+    compressed = re.sub(r'\s+', '', normalized_template.lower())
+    split_keyword_checks = [
+        "importunsafe",
+        "cimport",
+        "embedfile",
+        "ptrcast",
+        "importmodule",
+    ]
+    for keyword in split_keyword_checks:
+        if keyword in compressed:
+            logger.warning(
+                f"SECURITY: CSL template for '{op_name}' may contain obfuscated "
+                f"keyword '{keyword}' (possibly split across lines)"
+            )
+            raise ValueError(
+                f"CSL template for '{op_name}' contains suspicious patterns. "
+                f"Only use CSL templates from trusted sources."
+            )
+
     # Check for dangerous patterns in both original and normalized
     for check_template in [template, normalized_template]:
         for pattern in _DANGEROUS_CSL_PATTERNS:
-            if re.search(pattern, check_template, re.IGNORECASE):
+            if re.search(pattern, check_template, re.IGNORECASE | re.MULTILINE):
                 logger.warning(
                     f"SECURITY: CSL template for '{op_name}' contains potentially "
                     f"dangerous pattern matching '{pattern}'. Template rejected."
@@ -207,6 +281,46 @@ def _validate_csl_template(template: str, op_name: str) -> None:
 
 
 @dataclass
+class CSLTemplateInfo:
+    """Security metadata for CSL template tracking.
+
+    Attributes:
+        source_file: File path where the template was defined (if available)
+        source_line: Line number where the template was defined
+        registered_at: Unix timestamp when the template was registered
+        sha256_hash: SHA256 hash of the template content for integrity verification
+        validated: Whether the template passed security validation
+        validation_warnings: Any warnings generated during validation
+    """
+    source_file: Optional[str] = None
+    source_line: Optional[int] = None
+    registered_at: float = field(default_factory=time.time)
+    sha256_hash: Optional[str] = None
+    validated: bool = False
+    validation_warnings: List[str] = field(default_factory=list)
+
+
+def _compute_template_hash(template: str) -> str:
+    """Compute SHA256 hash of a CSL template for integrity tracking."""
+    return hashlib.sha256(template.encode("utf-8")).hexdigest()
+
+
+def _get_caller_info() -> Tuple[Optional[str], Optional[int]]:
+    """Get the file and line number of the caller for source tracking.
+
+    Security: This helps track where CSL templates originate from for auditing.
+    """
+    try:
+        # Walk up the stack to find the first frame outside this module
+        for frame_info in inspect.stack():
+            if frame_info.filename != __file__:
+                return frame_info.filename, frame_info.lineno
+    except Exception:
+        pass
+    return None, None
+
+
+@dataclass
 class CustomOp:
     """Custom operator definition.
 
@@ -219,11 +333,15 @@ class CustomOp:
             and executed. Only use templates from trusted sources.
         schema: Operator schema definition
         doc: Documentation string
+        csl_template_info: Security metadata for CSL template tracking
 
     Security Note:
         The csl_template field accepts arbitrary CSL code. This code will be
         compiled by the Cerebras SDK and executed on hardware. Only use
         templates from sources you trust completely.
+
+        The csl_template_info field tracks the origin and validation status
+        of CSL templates for security auditing purposes.
     """
 
     name: str
@@ -233,6 +351,7 @@ class CustomOp:
     schema: Optional[str] = None
     doc: str = ""
     metadata: Dict[str, Any] = field(default_factory=dict)
+    csl_template_info: Optional[CSLTemplateInfo] = None
 
     def __call__(self, *args, **kwargs):
         """Execute the custom operator."""
@@ -297,11 +416,30 @@ def register_custom_op(
     if name in _custom_ops:
         raise ValueError(f"Custom op '{name}' already registered")
 
-    # Security: Validate CSL template if provided
+    # Security: Track CSL template source and validation
+    csl_info = None
     if csl_template:
+        # Get caller information for security auditing
+        source_file, source_line = _get_caller_info()
+
+        # Validate the template
+        validation_warnings = []
         _validate_csl_template(csl_template, name)
+
+        # Create security metadata
+        csl_info = CSLTemplateInfo(
+            source_file=source_file,
+            source_line=source_line,
+            registered_at=time.time(),
+            sha256_hash=_compute_template_hash(csl_template),
+            validated=True,
+            validation_warnings=validation_warnings,
+        )
+
         logger.info(
             f"Registering custom op '{name}' with CSL template. "
+            f"Source: {source_file}:{source_line}, "
+            f"Hash: {csl_info.sha256_hash[:16]}... "
             f"Ensure the template is from a trusted source."
         )
 
@@ -313,6 +451,7 @@ def register_custom_op(
         schema=schema,
         doc=doc,
         metadata=metadata,
+        csl_template_info=csl_info,
     )
 
     _custom_ops[name] = op

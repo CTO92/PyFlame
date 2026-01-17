@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # Security: Whitelist of allowed plugin module prefixes
 # Plugins must be from these namespaces to be dynamically loaded
-ALLOWED_PLUGIN_PREFIXES = frozenset(
+_DEFAULT_PLUGIN_PREFIXES = frozenset(
     {
         "pyflame.",
         "pyflame_",
@@ -24,12 +24,79 @@ ALLOWED_PLUGIN_PREFIXES = frozenset(
     }
 )
 
-# Environment variable to add additional allowed prefixes (comma-separated)
-_extra_prefixes = os.environ.get("PYFLAME_ALLOWED_PLUGIN_PREFIXES", "")
-if _extra_prefixes:
-    ALLOWED_PLUGIN_PREFIXES = ALLOWED_PLUGIN_PREFIXES | frozenset(
-        _extra_prefixes.split(",")
+# Regex pattern for valid prefix characters (alphanumeric, underscore, dot)
+import re
+
+_VALID_PREFIX_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_.]*$")
+
+# Security: Option to disable environment variable plugin configuration
+# Set PYFLAME_DISABLE_ENV_PLUGINS=1 for high-security deployments
+_ENV_PLUGINS_DISABLED = os.environ.get("PYFLAME_DISABLE_ENV_PLUGINS", "").lower() in (
+    "1", "true", "yes"
+)
+
+
+def _validate_and_load_extra_prefixes() -> frozenset:
+    """Load and validate extra plugin prefixes from environment variable.
+
+    Security: Validates that custom prefixes only contain safe characters
+    to prevent injection attacks through environment variables.
+
+    For high-security deployments, set PYFLAME_DISABLE_ENV_PLUGINS=1 to
+    completely disable loading custom prefixes from environment variables.
+
+    Returns:
+        Combined set of allowed plugin prefixes
+    """
+    allowed = set(_DEFAULT_PLUGIN_PREFIXES)
+
+    # Security: Allow disabling env-based plugin configuration entirely
+    if _ENV_PLUGINS_DISABLED:
+        logger.info(
+            "SECURITY: Environment-based plugin prefixes disabled via "
+            "PYFLAME_DISABLE_ENV_PLUGINS. Only default prefixes are allowed."
+        )
+        return frozenset(allowed)
+
+    extra_prefixes = os.environ.get("PYFLAME_ALLOWED_PLUGIN_PREFIXES", "")
+    if not extra_prefixes:
+        return frozenset(allowed)
+
+    # Security: Log warning when custom prefixes are used
+    logger.warning(
+        "SECURITY: Custom plugin prefixes configured via PYFLAME_ALLOWED_PLUGIN_PREFIXES. "
+        "Ensure these prefixes are from trusted sources: %s",
+        extra_prefixes,
     )
+
+    for prefix in extra_prefixes.split(","):
+        prefix = prefix.strip()
+        if not prefix:
+            continue
+
+        # Security: Validate prefix format (alphanumeric, underscore, dot only)
+        if not _VALID_PREFIX_PATTERN.match(prefix):
+            logger.error(
+                "SECURITY: Rejecting invalid plugin prefix '%s'. "
+                "Prefixes must match pattern: %s",
+                prefix,
+                _VALID_PREFIX_PATTERN.pattern,
+            )
+            continue
+
+        # Security: Warn about overly broad prefixes
+        if len(prefix) < 3:
+            logger.warning(
+                "SECURITY: Plugin prefix '%s' is very short and may be overly permissive.",
+                prefix,
+            )
+
+        allowed.add(prefix)
+
+    return frozenset(allowed)
+
+
+ALLOWED_PLUGIN_PREFIXES = _validate_and_load_extra_prefixes()
 
 
 class SecurityError(Exception):
