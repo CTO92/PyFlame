@@ -162,6 +162,9 @@ class ConcatDataset(Dataset):
             self.cumulative_sizes.append(cumsum)
 
     def __getitem__(self, index: int) -> Any:
+        # Handle negative indices (Python convention)
+        if index < 0:
+            index = len(self) + index
         if index < 0 or index >= len(self):
             raise IndexError(f"Index {index} out of range")
 

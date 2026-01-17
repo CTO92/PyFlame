@@ -249,9 +249,10 @@ class Resize(Transform):
         self.interpolation = interpolation
 
     def __call__(self, img: Any) -> Any:
-        # This would use image processing library
-        # Placeholder implementation
-        return img
+        raise NotImplementedError(
+            "Resize transform requires an image processing library. "
+            "Consider using PIL or torchvision for image transforms."
+        )
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(size={self.size})"
@@ -272,8 +273,10 @@ class CenterCrop(Transform):
             self.size = size
 
     def __call__(self, img: Any) -> Any:
-        # Placeholder implementation
-        return img
+        raise NotImplementedError(
+            "CenterCrop transform requires an image processing library. "
+            "Consider using PIL or torchvision for image transforms."
+        )
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(size={self.size})"
@@ -300,8 +303,10 @@ class RandomCrop(Transform):
         self.padding = padding
 
     def __call__(self, img: Any) -> Any:
-        # Placeholder implementation
-        return img
+        raise NotImplementedError(
+            "RandomCrop transform requires an image processing library. "
+            "Consider using PIL or torchvision for image transforms."
+        )
 
 
 class RandomHorizontalFlip(Transform):
@@ -360,9 +365,10 @@ class RandomRotation(Transform):
             self.degrees = degrees
 
     def __call__(self, img: Any) -> Any:
-        _angle = random.uniform(*self.degrees)  # noqa: F841
-        # Placeholder: would apply rotation using _angle
-        return img
+        raise NotImplementedError(
+            "RandomRotation transform requires an image processing library. "
+            "Consider using PIL or torchvision for image transforms."
+        )
 
 
 class ColorJitter(Transform):
@@ -389,8 +395,10 @@ class ColorJitter(Transform):
         self.hue = hue
 
     def __call__(self, img: Any) -> Any:
-        # Placeholder implementation
-        return img
+        raise NotImplementedError(
+            "ColorJitter transform requires an image processing library. "
+            "Consider using PIL or torchvision for image transforms."
+        )
 
 
 class RandomErasing(Transform):
@@ -420,8 +428,10 @@ class RandomErasing(Transform):
         if random.random() >= self.p:
             return img
 
-        # Placeholder implementation
-        return img
+        raise NotImplementedError(
+            "RandomErasing transform requires an image processing library. "
+            "Consider using PIL or torchvision for image transforms."
+        )
 
 
 # =============================================================================
@@ -502,8 +512,10 @@ class Spectrogram(Transform):
         self.win_length = win_length or n_fft
 
     def __call__(self, waveform: Any) -> Any:
-        # Placeholder: would compute STFT
-        return waveform
+        raise NotImplementedError(
+            "Spectrogram transform requires an audio processing library. "
+            "Consider using librosa or torchaudio for audio transforms."
+        )
 
 
 class MelSpectrogram(Transform):
@@ -530,8 +542,10 @@ class MelSpectrogram(Transform):
         self.hop_length = hop_length or n_fft // 2
 
     def __call__(self, waveform: Any) -> Any:
-        # Placeholder: would compute mel spectrogram
-        return waveform
+        raise NotImplementedError(
+            "MelSpectrogram transform requires an audio processing library. "
+            "Consider using librosa or torchaudio for audio transforms."
+        )
 
 
 # =============================================================================

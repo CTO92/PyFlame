@@ -334,7 +334,8 @@ class Trainer:
 
     def _train_epoch(self) -> Dict[str, float]:
         """Train for one epoch."""
-        self.model.train()
+        if self.model is not None:
+            self.model.train()
 
         total_loss = 0.0
         num_batches = 0
@@ -469,7 +470,8 @@ class Trainer:
 
     def _validate(self) -> Dict[str, float]:
         """Run validation loop."""
-        self.model.eval()
+        if self.model is not None:
+            self.model.eval()
 
         total_loss = 0.0
         num_batches = 0

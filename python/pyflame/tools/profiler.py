@@ -445,7 +445,6 @@ class ProfilerContext:
             yield
 
     @classmethod
-    @property
-    def results(cls) -> Optional[ProfileResult]:
+    def get_results(cls) -> Optional[ProfileResult]:
         """Get the last profiling results."""
         return cls._results

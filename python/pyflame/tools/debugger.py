@@ -75,7 +75,7 @@ class TensorInspector:
             "is_evaluated": (
                 tensor.is_evaluated() if hasattr(tensor, "is_evaluated") else None
             ),
-            "numel": tensor.numel if hasattr(tensor, "numel") else None,
+            "numel": tensor.numel() if hasattr(tensor, "numel") else None,
         }
 
         # Add statistics if tensor is evaluated
@@ -88,8 +88,9 @@ class TensorInspector:
                     "mean": float(data.mean()),
                     "std": float(data.std()),
                 }
-                info["has_nan"] = bool(data != data).any()
-                info["has_inf"] = bool(abs(data) == float("inf")).any()
+                import numpy as np
+                info["has_nan"] = bool(np.isnan(data).any())
+                info["has_inf"] = bool(np.isinf(data).any())
             except Exception:
                 info["stats"] = None
 

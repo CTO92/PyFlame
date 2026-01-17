@@ -160,12 +160,14 @@ class Plugin(ABC):
     version: str = "0.0.0"
     description: str = ""
     author: str = ""
-    dependencies: List[str] = []
-    tags: List[str] = []
 
     def __init__(self):
         """Initialize plugin."""
         self._initialized = False
+        # Initialize mutable attributes per-instance to avoid shared state
+        # Subclasses should override these in their own __init__ or as class attributes
+        self.dependencies: List[str] = list(getattr(self.__class__, 'dependencies', []))
+        self.tags: List[str] = list(getattr(self.__class__, 'tags', []))
 
     @abstractmethod
     def setup(self):
