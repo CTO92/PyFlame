@@ -10,7 +10,7 @@ import json
 import logging
 import time
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -145,8 +145,12 @@ class ModelServer:
                 response.headers["X-Frame-Options"] = "DENY"
                 response.headers["X-XSS-Protection"] = "1; mode=block"
                 response.headers["Cache-Control"] = "no-store"
-                response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-                response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
+                response.headers["Strict-Transport-Security"] = (
+                    "max-age=31536000; includeSubDomains"
+                )
+                response.headers["Permissions-Policy"] = (
+                    "geolocation=(), camera=(), microphone=()"
+                )
                 # Security: Content Security Policy - defense in depth
                 response.headers["Content-Security-Policy"] = (
                     "default-src 'none'; "
@@ -171,9 +175,10 @@ class ModelServer:
                     # Allow JSON content type (with optional charset)
                     if not content_type.startswith("application/json"):
                         from starlette.responses import JSONResponse
+
                         return JSONResponse(
                             status_code=415,
-                            content={"detail": "Content-Type must be application/json"}
+                            content={"detail": "Content-Type must be application/json"},
                         )
 
                     # Security: Check Content-Length before processing
@@ -187,13 +192,13 @@ class ModelServer:
                                     status_code=413,
                                     content={
                                         "detail": f"Request body too large ({size_bytes} bytes). "
-                                                  f"Maximum: {max_bytes} bytes"
-                                    }
+                                        f"Maximum: {max_bytes} bytes"
+                                    },
                                 )
                         except ValueError:
                             return JSONResponse(
                                 status_code=400,
-                                content={"detail": "Invalid Content-Length header"}
+                                content={"detail": "Invalid Content-Length header"},
                             )
 
                 return await call_next(request)
@@ -416,7 +421,9 @@ class ModelServer:
                 # Add rate limit headers if rate limiting is enabled
                 if rate_info["limit"] > 0:
                     response.headers["X-RateLimit-Limit"] = str(rate_info["limit"])
-                    response.headers["X-RateLimit-Remaining"] = str(rate_info["remaining"])
+                    response.headers["X-RateLimit-Remaining"] = str(
+                        rate_info["remaining"]
+                    )
                     response.headers["X-RateLimit-Reset"] = str(rate_info["reset"])
 
                 return response
@@ -769,7 +776,9 @@ class SimpleModelServer:
                             self.end_headers()
                             self.wfile.write(
                                 json.dumps(
-                                    {"error": f"Batch size exceeds maximum ({max_batch_size})"}
+                                    {
+                                        "error": f"Batch size exceeds maximum ({max_batch_size})"
+                                    }
                                 ).encode()
                             )
                             return
@@ -782,7 +791,9 @@ class SimpleModelServer:
                             self.end_headers()
                             self.wfile.write(
                                 json.dumps(
-                                    {"error": "Input contains invalid values (NaN or Inf)"}
+                                    {
+                                        "error": "Input contains invalid values (NaN or Inf)"
+                                    }
                                 ).encode()
                             )
                             return
@@ -818,17 +829,13 @@ class SimpleModelServer:
                         self.send_header("Content-Type", "application/json")
                         self._send_security_headers()
                         self.end_headers()
-                        self.wfile.write(
-                            json.dumps({"error": "Invalid JSON"}).encode()
-                        )
+                        self.wfile.write(json.dumps({"error": "Invalid JSON"}).encode())
                     except ValueError as e:
                         self.send_response(400)
                         self.send_header("Content-Type", "application/json")
                         self._send_security_headers()
                         self.end_headers()
-                        self.wfile.write(
-                            json.dumps({"error": str(e)}).encode()
-                        )
+                        self.wfile.write(json.dumps({"error": str(e)}).encode())
                     except Exception:
                         # Security: Don't leak internal error details
                         logger.exception("Inference error in SimpleModelServer")
@@ -850,7 +857,7 @@ class SimpleModelServer:
                 logger.debug(format % args)
 
         server = HTTPServer((self.host, self.port), Handler)
-        print(f"PyFlame Simple Model Server (DEVELOPMENT ONLY)")
+        print("PyFlame Simple Model Server (DEVELOPMENT ONLY)")
         print(f"Running at http://{self.host}:{self.port}")
-        print(f"WARNING: Use ModelServer with FastAPI for production deployments.")
+        print("WARNING: Use ModelServer with FastAPI for production deployments.")
         server.serve_forever()

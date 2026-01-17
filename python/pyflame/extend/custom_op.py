@@ -74,25 +74,27 @@ _SUSPICIOUS_STRINGS = [
 ]
 
 # Zero-width and invisible characters that could hide malicious code
-_INVISIBLE_CHARS = frozenset([
-    "\u200b",  # Zero-width space
-    "\u200c",  # Zero-width non-joiner
-    "\u200d",  # Zero-width joiner
-    "\u2060",  # Word joiner
-    "\u2061",  # Function application
-    "\u2062",  # Invisible times
-    "\u2063",  # Invisible separator
-    "\u2064",  # Invisible plus
-    "\ufeff",  # Zero-width no-break space (BOM)
-    "\u00ad",  # Soft hyphen
-    "\u034f",  # Combining grapheme joiner
-    "\u061c",  # Arabic letter mark
-    "\u115f",  # Hangul choseong filler
-    "\u1160",  # Hangul jungseong filler
-    "\u17b4",  # Khmer vowel inherent aq
-    "\u17b5",  # Khmer vowel inherent aa
-    "\u180e",  # Mongolian vowel separator
-])
+_INVISIBLE_CHARS = frozenset(
+    [
+        "\u200b",  # Zero-width space
+        "\u200c",  # Zero-width non-joiner
+        "\u200d",  # Zero-width joiner
+        "\u2060",  # Word joiner
+        "\u2061",  # Function application
+        "\u2062",  # Invisible times
+        "\u2063",  # Invisible separator
+        "\u2064",  # Invisible plus
+        "\ufeff",  # Zero-width no-break space (BOM)
+        "\u00ad",  # Soft hyphen
+        "\u034f",  # Combining grapheme joiner
+        "\u061c",  # Arabic letter mark
+        "\u115f",  # Hangul choseong filler
+        "\u1160",  # Hangul jungseong filler
+        "\u17b4",  # Khmer vowel inherent aq
+        "\u17b5",  # Khmer vowel inherent aa
+        "\u180e",  # Mongolian vowel separator
+    ]
+)
 
 
 def _normalize_unicode(text: str) -> str:
@@ -195,7 +197,7 @@ def _validate_csl_template(template: str, op_name: str) -> None:
         )
 
     # Security: Check for control characters (except newline, tab, carriage return)
-    control_chars = [c for c in template if ord(c) < 32 and c not in '\n\t\r']
+    control_chars = [c for c in template if ord(c) < 32 and c not in "\n\t\r"]
     if control_chars:
         logger.error(
             f"SECURITY: CSL template for '{op_name}' contains {len(control_chars)} "
@@ -211,16 +213,12 @@ def _validate_csl_template(template: str, op_name: str) -> None:
 
     # Check for null bytes which could cause string truncation
     if "\x00" in template or "\x00" in normalized_template:
-        logger.error(
-            f"SECURITY: CSL template for '{op_name}' contains null bytes"
-        )
-        raise ValueError(
-            f"CSL template for '{op_name}' contains invalid null bytes"
-        )
+        logger.error(f"SECURITY: CSL template for '{op_name}' contains null bytes")
+        raise ValueError(f"CSL template for '{op_name}' contains invalid null bytes")
 
     # Security: Check for multi-line obfuscation (keywords split across lines)
     # Remove all whitespace to detect split keywords
-    compressed = re.sub(r'\s+', '', normalized_template.lower())
+    compressed = re.sub(r"\s+", "", normalized_template.lower())
     split_keyword_checks = [
         "importunsafe",
         "cimport",
@@ -292,6 +290,7 @@ class CSLTemplateInfo:
         validated: Whether the template passed security validation
         validation_warnings: Any warnings generated during validation
     """
+
     source_file: Optional[str] = None
     source_line: Optional[int] = None
     registered_at: float = field(default_factory=time.time)

@@ -554,14 +554,17 @@ class Trainer:
         metadata = {
             "epoch": int(self.state.epoch),
             "global_step": int(self.state.global_step),
-            "best_metric": float(self.state.best_metric)
-            if self.state.best_metric != float("inf")
-            else None,
+            "best_metric": (
+                float(self.state.best_metric)
+                if self.state.best_metric != float("inf")
+                else None
+            ),
             "format_version": 2,  # Version 2 = safe format (no pickle)
         }
 
         try:
             import json
+
             import numpy as np
 
             # Collect all arrays to save
@@ -590,8 +593,8 @@ class Trainer:
                         for param_key, param_val in group.items():
                             if isinstance(param_val, (int, float)):
                                 # Store scalars as 0-d arrays
-                                arrays_to_save[f"optim.group{i}.{param_key}"] = np.array(
-                                    param_val
+                                arrays_to_save[f"optim.group{i}.{param_key}"] = (
+                                    np.array(param_val)
                                 )
 
             # Save scheduler state (simplified)
@@ -609,7 +612,7 @@ class Trainer:
 
         return path
 
-    def _to_numpy(self, value) -> "Optional[np.ndarray]":
+    def _to_numpy(self, value) -> Optional[Any]:
         """Convert a value to numpy array if possible."""
         try:
             import numpy as np
@@ -638,6 +641,7 @@ class Trainer:
         The format is auto-detected based on file contents.
         """
         import json
+
         import numpy as np
 
         # Try to load as safe .npz format first

@@ -7,6 +7,7 @@ Allows third-party packages to extend PyFlame functionality.
 import importlib
 import logging
 import os
+import re
 import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -25,14 +26,14 @@ _DEFAULT_PLUGIN_PREFIXES = frozenset(
 )
 
 # Regex pattern for valid prefix characters (alphanumeric, underscore, dot)
-import re
-
 _VALID_PREFIX_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_.]*$")
 
 # Security: Option to disable environment variable plugin configuration
 # Set PYFLAME_DISABLE_ENV_PLUGINS=1 for high-security deployments
 _ENV_PLUGINS_DISABLED = os.environ.get("PYFLAME_DISABLE_ENV_PLUGINS", "").lower() in (
-    "1", "true", "yes"
+    "1",
+    "true",
+    "yes",
 )
 
 

@@ -8,7 +8,7 @@ import json
 import logging
 import ssl
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Union
 
 logger = logging.getLogger(__name__)
@@ -77,7 +77,7 @@ class ModelClient:
                 warnings.warn(
                     "Using insecure HTTP connection. Set allow_insecure_http=True "
                     "to suppress this warning, or use HTTPS for secure connections.",
-                    SecurityWarning,
+                    UserWarning,
                     stacklevel=3,
                 )
             logger.warning(
@@ -105,7 +105,7 @@ class ModelClient:
             warnings.warn(
                 "SSL certificate verification is disabled. "
                 "This is insecure and not recommended for production.",
-                SecurityWarning,
+                UserWarning,
                 stacklevel=3,
             )
             context = ssl.create_default_context()

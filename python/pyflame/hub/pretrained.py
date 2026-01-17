@@ -12,7 +12,6 @@ import pickle
 import pickletools
 import shutil
 import ssl
-import stat
 import urllib.error
 import urllib.request
 import warnings
@@ -26,6 +25,7 @@ _SAFETENSORS_AVAILABLE = False
 try:
     import safetensors
     import safetensors.numpy
+
     _SAFETENSORS_AVAILABLE = True
 except ImportError:
     pass
@@ -41,6 +41,7 @@ def is_safetensors_available() -> bool:
         True if safetensors is installed, False otherwise.
     """
     return _SAFETENSORS_AVAILABLE
+
 
 # Network security settings
 DOWNLOAD_TIMEOUT = 300  # 5 minutes max for downloads
@@ -510,9 +511,9 @@ class RestrictedUnpickler(pickle.Unpickler):
                 # Log first occurrence and periodically thereafter
                 if self._reconstruct_count == 1:
                     logger.info(
-                        f"SECURITY MONITOR: numpy._reconstruct called during unpickling. "
-                        f"This is expected for numpy array deserialization but is monitored "
-                        f"as a potential attack vector."
+                        "SECURITY MONITOR: numpy._reconstruct called during unpickling. "
+                        "This is expected for numpy array deserialization but is monitored "
+                        "as a potential attack vector."
                     )
                 elif self._reconstruct_count % 1000 == 0:
                     logger.debug(
@@ -584,7 +585,8 @@ def _scan_pickle_opcodes(data: bytes) -> None:
     }
 
     # Opcodes that are allowed (data-only operations)
-    SAFE_OPCODES: Set[str] = {
+    # Note: This list is kept for documentation purposes
+    _SAFE_OPCODES: Set[str] = {
         "PROTO",
         "STOP",
         "FRAME",
@@ -649,7 +651,7 @@ def _scan_pickle_opcodes(data: bytes) -> None:
         )
 
     dangerous_found = []
-    for op, arg, pos in ops:
+    for op, _arg, pos in ops:
         opname = op.name
         if opname in DANGEROUS_OPCODES:
             dangerous_found.append((opname, pos))
@@ -732,9 +734,9 @@ def _load_state_dict(path: str, allow_pickle: bool = True) -> Dict[str, Any]:
     # Security: Warn about pickle usage
     if _SAFETENSORS_AVAILABLE:
         warnings.warn(
-            f"Loading model from pickle format. Consider converting to SafeTensors "
-            f"for improved security. Pickle files can execute arbitrary code.",
-            SecurityWarning,
+            "Loading model from pickle format. Consider converting to SafeTensors "
+            "for improved security. Pickle files can execute arbitrary code.",
+            UserWarning,
             stacklevel=3,
         )
     else:
@@ -754,9 +756,7 @@ def _load_state_dict(path: str, allow_pickle: bool = True) -> Dict[str, Any]:
         raise  # Re-raise with original message
     except Exception as e:
         logger.error(f"SECURITY: Opcode scan failed for '{path}': {e}")
-        raise RuntimeError(
-            f"Failed to scan model file '{path}' for security: {e}"
-        )
+        raise RuntimeError(f"Failed to scan model file '{path}' for security: {e}")
 
     # Security: Second pass - use restricted unpickler
     try:
@@ -775,6 +775,7 @@ def _load_state_dict(path: str, allow_pickle: bool = True) -> Dict[str, Any]:
 
 class SecurityError(Exception):
     """Raised when a security check fails during model loading."""
+
     pass
 
 
