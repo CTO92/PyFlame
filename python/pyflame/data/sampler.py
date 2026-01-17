@@ -71,11 +71,13 @@ class RandomSampler(Sampler):
         replacement: bool = False,
         num_samples: Optional[int] = None,
         generator: Optional[random.Random] = None,
+        seed: Optional[int] = None,
     ):
         self.data_source = data_source
         self.replacement = replacement
         self._num_samples = num_samples
-        self.generator = generator or random.Random()
+        self._seed = seed if seed is not None else random.randint(0, 2**31 - 1)
+        self.generator = generator or random.Random(self._seed)
         self._epoch = 0
 
     @property
@@ -103,8 +105,8 @@ class RandomSampler(Sampler):
     def set_epoch(self, epoch: int):
         """Set epoch for reproducible shuffling in distributed training."""
         self._epoch = epoch
-        # Re-seed generator based on epoch
-        self.generator.seed(self._epoch)
+        # Combine original seed with epoch for reproducible but varied shuffling
+        self.generator.seed(self._seed + self._epoch)
 
 
 class SubsetRandomSampler(Sampler):
@@ -181,15 +183,15 @@ class WeightedRandomSampler(Sampler):
             for _ in range(self.num_samples):
                 yield self.generator.choices(indices, weights=probs)[0]
         else:
-            # Sample without replacement
+            # Sample without replacement using set for O(1) membership check
             indices = list(range(len(self.weights)))
             remaining_probs = probs.copy()
-            selected = []
+            selected_set = set()  # Use set for O(1) lookup instead of list
 
             for _ in range(self.num_samples):
                 # Renormalize remaining probabilities
                 total_remaining = sum(
-                    remaining_probs[i] for i in indices if i not in selected
+                    remaining_probs[i] for i in indices if i not in selected_set
                 )
                 if total_remaining <= 0:
                     break
@@ -198,11 +200,11 @@ class WeightedRandomSampler(Sampler):
                 r = self.generator.random() * total_remaining
                 cumsum = 0
                 for i in indices:
-                    if i in selected:
+                    if i in selected_set:
                         continue
                     cumsum += remaining_probs[i]
                     if cumsum >= r:
-                        selected.append(i)
+                        selected_set.add(i)
                         yield i
                         break
 

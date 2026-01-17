@@ -198,11 +198,11 @@ class Trainer:
         self,
         config: Optional[TrainerConfig] = None,
         callbacks: Optional[List[Callback]] = None,
-        logger: Optional[Any] = None,
+        metrics_logger: Optional[Any] = None,
     ):
         self.config = config or TrainerConfig()
         self.callbacks = CallbackList(callbacks or [])
-        self.logger = logger
+        self.metrics_logger = metrics_logger  # For logging metrics (MLflow, etc.)
         self.state = TrainerState()
 
         # Will be set during fit()
@@ -367,8 +367,11 @@ class Trainer:
             if (batch_idx + 1) % self.config.gradient_accumulation_steps == 0:
                 self.state.global_step += 1
 
-            # Log every n steps
-            if self.state.global_step % self.config.log_every_n_steps == 0:
+            # Log every n steps (skip step 0 since 0 % n == 0 for any n)
+            if (
+                self.state.global_step > 0
+                and self.state.global_step % self.config.log_every_n_steps == 0
+            ):
                 self._log_metrics({"train_loss": loss}, step=self.state.global_step)
 
             # Check max steps
@@ -489,10 +492,10 @@ class Trainer:
             # Callbacks: on_validation_batch_end
             self.callbacks.on_validation_batch_end(self, batch, batch_idx)
 
-            # Limit validation batches
+            # Limit validation batches (use num_batches which is already incremented)
             if (
                 self.config.limit_val_batches
-                and batch_idx >= self.config.limit_val_batches
+                and num_batches >= self.config.limit_val_batches
             ):
                 break
 
@@ -534,8 +537,8 @@ class Trainer:
 
     def _log_metrics(self, metrics: Dict[str, Any], step: int):
         """Log metrics."""
-        if self.logger is not None:
-            self.logger.log_metrics(metrics, step=step)
+        if self.metrics_logger is not None:
+            self.metrics_logger.log_metrics(metrics, step=step)
 
     def save_checkpoint(self, path: Optional[str] = None) -> str:
         """Save a checkpoint using safe serialization.
@@ -747,13 +750,22 @@ class Trainer:
 
         Args:
             model: Model to test (uses self.model if None).
-            test_loader: DataLoader for test data.
+            test_loader: DataLoader for test data (required).
             criterion: Loss function (uses self.criterion if None).
 
         Returns:
             Dictionary with test metrics.
+
+        Raises:
+            ValueError: If test_loader is None.
         """
+        if test_loader is None:
+            raise ValueError("test_loader cannot be None")
+
         model = model or self.model
+        if model is None:
+            raise ValueError("model cannot be None")
+
         criterion = criterion or self.criterion
 
         model.eval()
@@ -796,12 +808,21 @@ class Trainer:
 
         Args:
             model: Model to use (uses self.model if None).
-            dataloader: DataLoader for prediction data.
+            dataloader: DataLoader for prediction data (required).
 
         Returns:
             List of predictions.
+
+        Raises:
+            ValueError: If dataloader is None.
         """
+        if dataloader is None:
+            raise ValueError("dataloader cannot be None")
+
         model = model or self.model
+        if model is None:
+            raise ValueError("model cannot be None")
+
         model.eval()
 
         predictions = []

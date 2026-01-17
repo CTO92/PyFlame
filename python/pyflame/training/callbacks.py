@@ -253,7 +253,7 @@ class ModelCheckpoint(Callback):
 
         # Save last checkpoint
         if self.save_last:
-            last_path = os.path.join(self.dirpath, "last.pt")
+            last_path = os.path.join(self.dirpath, "last.npz")
             trainer.save_checkpoint(last_path)
 
         if current is None:
@@ -304,7 +304,7 @@ class ModelCheckpoint(Callback):
             if placeholder in filename:
                 filename = filename.replace(placeholder, f"{value:.4f}")
 
-        return filename + ".pt"
+        return filename + ".npz"
 
 
 class LearningRateScheduler(Callback):
@@ -382,7 +382,12 @@ class ProgressBar(Callback):
                 progress = (batch_idx + 1) / total_batches
                 bar_length = 30
                 filled = int(bar_length * progress)
-                bar = "=" * filled + ">" + "." * (bar_length - filled - 1)
+
+                # Handle 100% completion (no arrow, all filled)
+                if filled >= bar_length:
+                    bar = "=" * bar_length
+                else:
+                    bar = "=" * filled + ">" + "." * (bar_length - filled - 1)
 
                 # Get current loss
                 loss = trainer.state.logs.get("train_loss", 0.0)
@@ -501,6 +506,8 @@ class CSVLogger(Callback):
         self._save_csv()
 
     def _save_csv(self) -> None:
+        import csv
+
         if not self.metrics_history:
             return
 
@@ -510,12 +517,13 @@ class CSVLogger(Callback):
             keys.update(row.keys())
         keys = sorted(keys)
 
-        # Write CSV
-        with open(self.filepath, "w") as f:
-            f.write(",".join(keys) + "\n")
+        # Write CSV with proper escaping using csv module
+        with open(self.filepath, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(keys)
             for row in self.metrics_history:
-                values = [str(row.get(k, "")) for k in keys]
-                f.write(",".join(values) + "\n")
+                values = [row.get(k, "") for k in keys]
+                writer.writerow(values)
 
 
 class GradientAccumulationScheduler(Callback):

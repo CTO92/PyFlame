@@ -122,6 +122,9 @@ class Subset(Dataset):
         self.indices = list(indices)
 
     def __getitem__(self, index: int) -> Any:
+        # Handle negative indices (Python convention)
+        if index < 0:
+            index = len(self.indices) + index
         if index < 0 or index >= len(self.indices):
             raise IndexError(
                 f"Index {index} out of range for subset of size {len(self.indices)}"
@@ -207,10 +210,28 @@ def random_split(
 
     total_length = len(dataset)
 
+    # Validate lengths - must be all floats (fractions) or all ints (absolute)
+    has_floats = any(isinstance(x, float) and not x.is_integer() for x in lengths)
+    has_ints = any(
+        isinstance(x, int) or (isinstance(x, float) and x.is_integer()) for x in lengths
+    )
+
+    if has_floats and has_ints:
+        # Check if it's a mixed case that could cause confusion
+        non_integer_floats = [
+            x for x in lengths if isinstance(x, float) and not x.is_integer()
+        ]
+        if non_integer_floats:
+            raise ValueError(
+                "lengths must be either all fractions (floats summing to 1.0) "
+                "or all integers (summing to dataset length). "
+                f"Got mixed types: {lengths}"
+            )
+
     # Convert fractions to lengths
-    if all(isinstance(frac, float) for frac in lengths):
+    if has_floats and all(isinstance(x, float) for x in lengths):
         if abs(sum(lengths) - 1.0) > 1e-6:
-            raise ValueError("Fractions must sum to 1.0")
+            raise ValueError(f"Fractions must sum to 1.0, got {sum(lengths)}")
         int_lengths = []
         remaining = total_length
         for _, frac in enumerate(lengths[:-1]):
@@ -219,6 +240,9 @@ def random_split(
             remaining -= length
         int_lengths.append(remaining)
         lengths = int_lengths
+    else:
+        # Ensure all are integers
+        lengths = [int(x) for x in lengths]
 
     if sum(lengths) != total_length:
         raise ValueError(

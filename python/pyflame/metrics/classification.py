@@ -67,8 +67,11 @@ class Accuracy(Metric):
                 return
         elif len(preds.shape) == 1 or preds.shape[-1] == 1:
             # Binary: apply threshold
+            import numpy as np
+
             preds = preds.flatten()
-            if preds.dtype in (float, "float32", "float64"):
+            # Check if dtype is floating point (numpy dtype comparison)
+            if np.issubdtype(preds.dtype, np.floating):
                 preds = (preds >= self.threshold).astype(int)
 
         target = target.flatten()
@@ -277,6 +280,18 @@ class AUROC(Metric):
     def update(self, preds: Any, target: Any) -> None:
         preds = self._to_numpy(preds)
         target = self._to_numpy(target)
+
+        # Handle multi-class predictions: extract positive class probability
+        if len(preds.shape) > 1 and preds.shape[-1] > 1:
+            if preds.shape[-1] == 2:
+                # Binary classification with 2 classes: use probability of positive class
+                preds = preds[:, 1]
+            else:
+                raise ValueError(
+                    f"AUROC with multi-class ({preds.shape[-1]} classes) requires "
+                    "explicit handling. Pass probabilities for the positive class only, "
+                    "or use a multi-class AUROC implementation."
+                )
 
         self._state["preds"].extend(preds.flatten().tolist())
         self._state["target"].extend(target.flatten().tolist())

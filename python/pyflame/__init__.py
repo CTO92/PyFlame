@@ -228,7 +228,7 @@ def arange(start, end=None, step=1, dtype=None):
     Args:
         start: Start value (or end if end is None).
         end: End value (exclusive).
-        step: Step size (default: 1).
+        step: Step size (default: 1). Must be non-zero.
         dtype: Data type (default: float32).
 
     Returns:
@@ -245,7 +245,11 @@ def arange(start, end=None, step=1, dtype=None):
     if end is None:
         end = start
         start = 0
-    return Tensor.arange(int(start), int(end), int(step), dtype)
+    if step == 0:
+        raise ValueError("step must be non-zero")
+    # Use float conversion to preserve precision, then convert based on dtype
+    # For integer dtypes, we still need integer steps
+    return Tensor.arange(float(start), float(end), float(step), dtype)
 
 
 def tensor(data, dtype=None):
@@ -253,7 +257,7 @@ def tensor(data, dtype=None):
 
     Args:
         data: Python list, numpy array, or scalar.
-        dtype: Data type (default: inferred from data).
+        dtype: Data type (default: float32).
 
     Returns:
         A new Tensor containing the data.
@@ -265,7 +269,25 @@ def tensor(data, dtype=None):
     _require_cpp("tensor")
     import numpy as np
 
-    arr = np.asarray(data, dtype=np.float32)
+    # Map PyFlame dtype to numpy dtype
+    if dtype is None:
+        np_dtype = np.float32
+    elif dtype == float32:
+        np_dtype = np.float32
+    elif dtype == float16:
+        np_dtype = np.float16
+    elif dtype == int32:
+        np_dtype = np.int32
+    elif dtype == int16:
+        np_dtype = np.int16
+    elif dtype == int8:
+        np_dtype = np.int8
+    elif dtype == bool_:
+        np_dtype = np.bool_
+    else:
+        np_dtype = np.float32  # Default fallback
+
+    arr = np.asarray(data, dtype=np_dtype)
     return Tensor.from_numpy(arr)
 
 
@@ -305,7 +327,7 @@ def eval(*tensors):
         *tensors: Tensors to evaluate.
 
     Returns:
-        The evaluated tensor(s).
+        The evaluated tensor(s), or None if no tensors provided.
 
     Example:
         >>> a = pf.randn([100])
@@ -314,6 +336,8 @@ def eval(*tensors):
         >>> pf.eval(c) # Now computed
     """
     _require_cpp("eval")
+    if len(tensors) == 0:
+        return None
     for t in tensors:
         t.eval()
     return tensors[0] if len(tensors) == 1 else tensors
