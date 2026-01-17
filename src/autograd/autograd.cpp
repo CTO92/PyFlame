@@ -241,10 +241,14 @@ void GradientRegistry::register_all_gradients() {
         // grad = y * (grad_out - sum(grad_out * y, dim))
         int dim = output->get_attr<int>("dim", -1);
 
+        // Normalize negative dimension
+        int ndim = static_cast<int>(grad_out->shape().size());
+        if (dim < 0) dim += ndim;
+
         auto gy = graph->create_op(OpType::MUL, {grad_out, output},
             ir::TensorSpec(grad_out->shape(), grad_out->dtype(), grad_out->layout()));
 
-        // Sum along the softmax dimension
+        // Sum along the softmax dimension (use normalized dim)
         auto gy_sum = graph->create_op(OpType::SUM, {gy},
             ir::infer_reduction_shape(gy->shape(), dim, true));
         gy_sum->set_attr("dim", dim);
@@ -279,11 +283,25 @@ void GradientRegistry::register_all_gradients() {
 
         // Compute number of elements in reduction
         int dim = output->get_attr<int>("dim", -1);
+        int ndim = static_cast<int>(input_shape.size());
+
+        // Normalize negative dimension
+        if (dim < 0) dim += ndim;
+
         int64_t n;
-        if (dim == -1) {
+        if (dim < 0 || dim >= ndim) {
+            // Full reduction
             n = inputs[0]->numel();
         } else {
             n = input_shape[dim];
+        }
+
+        // Check for division by zero
+        if (n == 0) {
+            // Return zero gradient for empty tensor
+            auto zero_grad = graph->create_constant(
+                ir::TensorSpec(input_shape, grad_out->dtype(), grad_out->layout()));
+            return std::vector<std::shared_ptr<Node>>{zero_grad};
         }
 
         // Create 1/n constant

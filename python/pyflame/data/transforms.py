@@ -94,7 +94,11 @@ class ToTensor(Transform):
                 return pf.from_numpy(data)
             elif isinstance(data, (list, tuple)):
                 return pf.tensor(data)
+            elif isinstance(data, (int, float)):
+                # Scalar - create 0-dimensional tensor
+                return pf.tensor(data)
             else:
+                # Fallback: wrap in list
                 return pf.tensor([data])
         except ImportError:
             # Fallback: try numpy

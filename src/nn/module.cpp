@@ -92,12 +92,18 @@ std::map<std::string, Tensor> Module::state_dict() const {
     return result;
 }
 
-void Module::load_state_dict(const std::map<std::string, Tensor>& dict) {
+void Module::load_state_dict(const std::map<std::string, Tensor>& dict,
+                             bool strict) {
+    std::vector<std::string> missing_keys;
+
     for (const auto& [key, value] : dict) {
+        bool found = false;
+
         // Check if it's an own parameter
         auto param_it = parameters_.find(key);
         if (param_it != parameters_.end()) {
             param_it->second = value;
+            found = true;
             continue;
         }
 
@@ -105,6 +111,7 @@ void Module::load_state_dict(const std::map<std::string, Tensor>& dict) {
         auto buffer_it = buffers_.find(key);
         if (buffer_it != buffers_.end()) {
             buffer_it->second = value;
+            found = true;
             continue;
         }
 
@@ -118,9 +125,24 @@ void Module::load_state_dict(const std::map<std::string, Tensor>& dict) {
             if (child_it != children_.end()) {
                 std::map<std::string, Tensor> child_dict;
                 child_dict[rest] = value;
-                child_it->second->load_state_dict(child_dict);
+                child_it->second->load_state_dict(child_dict, strict);
+                found = true;
             }
         }
+
+        if (!found) {
+            missing_keys.push_back(key);
+        }
+    }
+
+    // In strict mode, throw error if any keys were not found
+    if (strict && !missing_keys.empty()) {
+        std::string error_msg = "Missing keys in state_dict: ";
+        for (size_t i = 0; i < missing_keys.size(); ++i) {
+            if (i > 0) error_msg += ", ";
+            error_msg += missing_keys[i];
+        }
+        throw std::runtime_error(error_msg);
     }
 }
 

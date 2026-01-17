@@ -199,9 +199,9 @@ void reduce_nd_cpu(
             }
         }
 
-        // Reduce over the dimension
-        float acc = 0.0f;
-        bool first = true;
+        // Collect values along the reduction dimension
+        std::vector<float> values;
+        values.reserve(shape[reduce_dim]);
         for (int64_t r = 0; r < shape[reduce_dim]; ++r) {
             in_multi_base[reduce_dim] = r;
 
@@ -211,15 +211,11 @@ void reduce_nd_cpu(
                 in_idx += in_multi_base[i] * strides[i];
             }
 
-            if (first) {
-                acc = x[in_idx];
-                first = false;
-            } else {
-                acc += x[in_idx];  // For sum; other ops would differ
-            }
+            values.push_back(x[in_idx]);
         }
 
-        out[out_idx] = acc;
+        // Apply the reduction function
+        out[out_idx] = reduce_fn(values.data(), static_cast<int64_t>(values.size()));
     }
 }
 

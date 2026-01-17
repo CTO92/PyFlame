@@ -88,7 +88,23 @@ class WandbCallback:
         )
 
     def on_train_begin(self, trainer, **kwargs):
+        """Called at the start of training (alias for on_fit_start).
+
+        Args:
+            trainer: Trainer instance
+        """
+        self._on_training_start(trainer, **kwargs)
+
+    def on_fit_start(self, trainer, **kwargs):
         """Called at the start of training.
+
+        Args:
+            trainer: Trainer instance
+        """
+        self._on_training_start(trainer, **kwargs)
+
+    def _on_training_start(self, trainer, **kwargs):
+        """Internal method for training start initialization.
 
         Args:
             trainer: Trainer instance
@@ -174,6 +190,7 @@ class WandbCallback:
 
         # Log final model if requested
         if self.log_model and hasattr(trainer, "model"):
+            model_path = None
             try:
                 import pyflame as pf
 
@@ -191,13 +208,20 @@ class WandbCallback:
 
                 pf.save(trainer.model.state_dict(), model_path)
                 artifact.add_file(model_path)
-                wandb.log_artifact(artifact)
-
-                # Cleanup
-                os.unlink(model_path)
+                # Wait for artifact to be logged before cleanup
+                artifact_result = wandb.log_artifact(artifact)
+                if artifact_result is not None:
+                    artifact_result.wait()
 
             except Exception as e:
                 print(f"Warning: Could not log model to W&B: {e}")
+            finally:
+                # Cleanup temp file after artifact upload completes
+                if model_path and os.path.exists(model_path):
+                    try:
+                        os.unlink(model_path)
+                    except OSError:
+                        pass  # File already deleted or inaccessible
 
         # Finish run
         wandb.finish()

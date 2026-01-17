@@ -21,7 +21,7 @@ MultiheadAttention::MultiheadAttention(int64_t embed_dim,
                                        bool batch_first)
     : embed_dim_(embed_dim)
     , num_heads_(num_heads)
-    , head_dim_(embed_dim / num_heads)
+    , head_dim_(0)  // Initialized below after validation
     , kdim_(kdim == 0 ? embed_dim : kdim)
     , vdim_(vdim == 0 ? embed_dim : vdim)
     , dropout_p_(dropout)
@@ -32,9 +32,16 @@ MultiheadAttention::MultiheadAttention(int64_t embed_dim,
 {
     set_name("MultiheadAttention");
 
+    // Validate BEFORE computing head_dim to avoid division by zero
+    if (num_heads <= 0) {
+        throw std::invalid_argument("num_heads must be positive");
+    }
     if (embed_dim % num_heads != 0) {
         throw std::invalid_argument("embed_dim must be divisible by num_heads");
     }
+
+    // Now safe to compute head_dim
+    head_dim_ = embed_dim / num_heads;
 
     // Create projection layers
     q_proj_ = register_module("q_proj", std::make_shared<Linear>(embed_dim, embed_dim, bias));

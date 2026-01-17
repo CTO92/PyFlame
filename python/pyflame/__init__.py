@@ -291,19 +291,59 @@ def tensor(data, dtype=None):
     return Tensor.from_numpy(arr)
 
 
-def from_numpy(arr):
+def from_numpy(arr, dtype=None):
     """Create a tensor from a numpy array.
 
     Args:
         arr: NumPy array.
+        dtype: Optional PyFlame dtype. If None, infers from numpy array dtype.
+            Supported numpy dtypes: float32, float16, int32, int16, int8, bool.
+            Other dtypes will be converted to float32 with a warning.
 
     Returns:
         A new Tensor containing the data.
     """
     _require_cpp("from_numpy")
+    import warnings
+
     import numpy as np
 
-    arr = np.ascontiguousarray(arr, dtype=np.float32)
+    arr = np.ascontiguousarray(arr)
+
+    # Map numpy dtypes to supported types
+    supported_dtypes = {
+        np.float32: np.float32,
+        np.float16: np.float16,
+        np.int32: np.int32,
+        np.int16: np.int16,
+        np.int8: np.int8,
+        np.bool_: np.bool_,
+    }
+
+    # If dtype is explicitly provided, convert to it
+    if dtype is not None:
+        # Map PyFlame dtype to numpy dtype
+        dtype_map = {
+            float32: np.float32,
+            float16: np.float16,
+            bfloat16: np.float32,  # bfloat16 not natively supported in numpy
+            int32: np.int32,
+            int16: np.int16,
+            int8: np.int8,
+            bool_: np.bool_,
+        }
+        target_dtype = dtype_map.get(dtype, np.float32)
+        arr = arr.astype(target_dtype)
+    elif arr.dtype.type not in supported_dtypes:
+        # Warn about automatic conversion
+        warnings.warn(
+            f"NumPy dtype {arr.dtype} is not directly supported. "
+            f"Converting to float32. Use dtype parameter to specify target type.",
+            UserWarning,
+            stacklevel=2,
+        )
+        arr = arr.astype(np.float32)
+
     return Tensor.from_numpy(arr)
 
 

@@ -150,14 +150,30 @@ bool is_safe_template_value(const std::string& value) {
     }
 
     // Strict character allowlist for template values
+    // Security: Removed space and colon to prevent code injection patterns
     for (char c : value) {
         unsigned char uc = static_cast<unsigned char>(c);
-        // Allow: alphanumeric, underscore, period, hyphen, colon, space
+        // Allow: alphanumeric, underscore, period, hyphen
         // Also allow brackets and commas for array syntax
+        // Note: Removed ':' and ' ' to prevent injection patterns like "type: value"
         bool allowed = std::isalnum(uc) ||
-                       c == '_' || c == '.' || c == '-' || c == ':' || c == ' ' ||
-                       c == '[' || c == ']' || c == ',' || c == '(' || c == ')';
+                       c == '_' || c == '.' || c == '-' ||
+                       c == '[' || c == ']' || c == ',';
         if (!allowed) {
+            return false;
+        }
+    }
+
+    // Additional check: disallow leading/trailing special chars
+    if (!value.empty()) {
+        char first = value.front();
+        char last = value.back();
+        if (!std::isalnum(static_cast<unsigned char>(first)) &&
+            first != '_' && first != '[') {
+            return false;
+        }
+        if (!std::isalnum(static_cast<unsigned char>(last)) &&
+            last != '_' && last != ']') {
             return false;
         }
     }

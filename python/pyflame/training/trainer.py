@@ -617,6 +617,9 @@ class Trainer:
 
     def _to_numpy(self, value) -> Optional[Any]:
         """Convert a value to numpy array if possible."""
+        if value is None:
+            return None
+
         try:
             import numpy as np
 

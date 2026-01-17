@@ -174,6 +174,8 @@ Tensor BatchNorm1d::forward(const Tensor& input) {
     bn_node->set_attr("eps", eps_);
     bn_node->set_attr("momentum", momentum_);
     bn_node->set_attr("training", is_training());
+    bn_node->set_attr("affine", affine_);
+    bn_node->set_attr("track_running_stats", track_running_stats_);
 
     auto impl = TensorImpl::from_node(graph, bn_node);
     return Tensor(impl);

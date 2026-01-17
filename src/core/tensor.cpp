@@ -476,6 +476,7 @@ Tensor matmul(const Tensor& a, const Tensor& b) {
     if (!a.impl() || !b.impl()) return Tensor();
 
     auto graph = a.graph();
+    if (!graph) return Tensor();  // Ensure graph is valid
 
     // Infer output spec
     auto output_spec = ir::infer_matmul_spec(

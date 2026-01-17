@@ -362,6 +362,7 @@ class PearsonCorrelation(Metric):
         denominator = math.sqrt((n * sum_x2 - sum_x**2) * (n * sum_y2 - sum_y**2))
 
         if denominator == 0:
-            return 0.0
+            # Correlation is undefined when variance is zero
+            return float("nan")
 
         return numerator / denominator

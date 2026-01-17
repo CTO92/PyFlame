@@ -55,9 +55,15 @@ SGD::SGD(std::vector<Tensor*> params, float lr, float momentum,
     if (momentum < 0.0f) {
         throw std::invalid_argument("Momentum must be non-negative");
     }
-    if (nesterov && (momentum <= 0.0f || dampening != 0.0f)) {
-        throw std::invalid_argument(
-            "Nesterov momentum requires momentum > 0 and dampening = 0");
+    if (nesterov) {
+        if (momentum == 0.0f) {
+            throw std::invalid_argument(
+                "Nesterov momentum requires momentum > 0");
+        }
+        if (dampening != 0.0f) {
+            throw std::invalid_argument(
+                "Nesterov momentum requires dampening = 0");
+        }
     }
 
     // Initialize momentum buffers (lazily, on first step)

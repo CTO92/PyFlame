@@ -12,6 +12,16 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
 
+class nullcontext:
+    """Context manager that does nothing (fallback for older Python versions)."""
+
+    def __enter__(self):
+        return None
+
+    def __exit__(self, *args):
+        return False
+
+
 @dataclass
 class BenchmarkConfig:
     """Configuration for benchmark runs.
@@ -198,10 +208,11 @@ class BenchmarkRunner:
         max_time = max(times)
 
         sorted_times = sorted(times)
-        p95_idx = int(len(sorted_times) * 0.95)
-        p99_idx = int(len(sorted_times) * 0.99)
-        p95 = sorted_times[p95_idx] if p95_idx < len(sorted_times) else max_time
-        p99 = sorted_times[p99_idx] if p99_idx < len(sorted_times) else max_time
+        n = len(sorted_times)
+        p95_idx = min(int((n - 1) * 0.95), n - 1) if n > 0 else 0
+        p99_idx = min(int((n - 1) * 0.99), n - 1) if n > 0 else 0
+        p95 = sorted_times[p95_idx] if n > 0 else max_time
+        p99 = sorted_times[p99_idx] if n > 0 else max_time
 
         throughput = batch_size / (avg_time / 1000)  # samples/sec
 
@@ -444,13 +455,3 @@ def timed(name: str = "Operation"):
     yield
     end = time.perf_counter()
     print(f"{name}: {(end - start) * 1000:.2f} ms")
-
-
-class nullcontext:
-    """Context manager that does nothing."""
-
-    def __enter__(self):
-        return None
-
-    def __exit__(self, *args):
-        return False

@@ -156,8 +156,12 @@ void LinearLR::step() {
     if (last_epoch_ >= total_iters_) {
         factor = end_factor_;
     } else {
-        float progress = static_cast<float>(last_epoch_) / static_cast<float>(total_iters_);
-        factor = start_factor_ + (end_factor_ - start_factor_) * progress;
+        // Use formulation that preserves more precision:
+        // factor = start + (end - start) * epoch / total
+        //        = (start * total + (end - start) * epoch) / total
+        float diff = end_factor_ - start_factor_;
+        factor = start_factor_ + diff * static_cast<float>(last_epoch_) /
+                                       static_cast<float>(total_iters_);
     }
 
     set_lr(base_lr_ * factor);
@@ -283,16 +287,19 @@ bool ReduceLROnPlateau::is_better(float current, float best) const {
 }
 
 void ReduceLROnPlateau::step(float metric) {
-    // Handle cooldown
+    // Handle cooldown - decrement counter but don't reset bad epochs
+    // This allows tracking metric deterioration during cooldown
     if (cooldown_counter_ > 0) {
         cooldown_counter_--;
-        num_bad_epochs_ = 0;
+        // Note: Intentionally NOT resetting num_bad_epochs_ here
+        // to allow proper detection of continued metric deterioration
     }
 
     if (is_better(metric, best_)) {
         best_ = metric;
         num_bad_epochs_ = 0;
-    } else {
+    } else if (cooldown_counter_ == 0) {
+        // Only count bad epochs when not in cooldown
         num_bad_epochs_++;
     }
 
@@ -359,10 +366,13 @@ void OneCycleLR::step() {
     last_epoch_++;
 
     float lr;
-    if (last_epoch_ <= step_up_) {
+    if (last_epoch_ < step_up_) {
         // Warmup phase: linear increase from initial_lr to max_lr
         float progress = static_cast<float>(last_epoch_) / static_cast<float>(step_up_);
         lr = initial_lr_ + (max_lr_ - initial_lr_) * progress;
+    } else if (last_epoch_ == step_up_) {
+        // Exact boundary: use max_lr to avoid floating-point discontinuity
+        lr = max_lr_;
     } else {
         // Annealing phase
         int64_t step_in_phase = last_epoch_ - step_up_;

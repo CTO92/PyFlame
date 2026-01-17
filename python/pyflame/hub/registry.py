@@ -111,8 +111,12 @@ class ModelRegistry:
         Example:
             >>> model = registry.get("resnet50", pretrained=True, num_classes=100)
         """
-        # Resolve alias
-        if name in self._aliases:
+        # Resolve alias (handle chained aliases with cycle detection)
+        visited = set()
+        while name in self._aliases:
+            if name in visited:
+                raise ValueError(f"Circular alias detected for '{name}'")
+            visited.add(name)
             name = self._aliases[name]
 
         if name not in self._models:

@@ -287,7 +287,7 @@ Tensor AdaptiveAvgPool1d::forward(const Tensor& input) {
     ir::TensorSpec out_spec({batch_size, channels, output_size_},
                            input.dtype(), input.layout());
 
-    auto pool_node = graph->create_op(ir::OpType::ADAPTIVE_AVG_POOL2D, {input.node()}, out_spec);
+    auto pool_node = graph->create_op(ir::OpType::ADAPTIVE_AVG_POOL1D, {input.node()}, out_spec);
     pool_node->set_attr("output_size", std::vector<int64_t>{output_size_});
 
     auto impl = TensorImpl::from_node(graph, pool_node);

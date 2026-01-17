@@ -210,7 +210,9 @@ class StatScores(Metric):
         target = target.flatten()
 
         # Apply threshold for probabilities
-        if preds.dtype in (float, "float32", "float64"):
+        import numpy as np
+
+        if np.issubdtype(preds.dtype, np.floating):
             preds = (preds >= self.threshold).astype(int)
 
         # Binary case

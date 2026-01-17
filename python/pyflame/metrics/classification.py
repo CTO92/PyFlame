@@ -312,7 +312,8 @@ class AUROC(Metric):
         n_neg = len(paired) - n_pos
 
         if n_pos == 0 or n_neg == 0:
-            return 0.5  # No discrimination possible
+            # AUROC is undefined when only one class is present
+            return float("nan")
 
         auc = 0.0
         tp = 0

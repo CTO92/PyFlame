@@ -73,7 +73,10 @@ public:
     std::map<std::string, Tensor> state_dict() const;
 
     /// Load state dictionary
-    void load_state_dict(const std::map<std::string, Tensor>& dict);
+    /// @param dict State dictionary to load
+    /// @param strict If true, throw error when keys in dict are not found in module
+    void load_state_dict(const std::map<std::string, Tensor>& dict,
+                         bool strict = true);
 
     // ========================================================================
     // Module Hierarchy

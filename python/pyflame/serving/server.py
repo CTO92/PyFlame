@@ -8,6 +8,7 @@ import asyncio
 import hmac
 import json
 import logging
+import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -133,8 +134,9 @@ class ModelServer:
             version="1.0.0",
         )
 
-        # Rate limiting state
+        # Rate limiting state with thread safety
         rate_limit_state = defaultdict(list)
+        rate_limit_lock = threading.Lock()
 
         # Security middleware for headers
         class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -277,34 +279,35 @@ class ModelServer:
             current_time = time.time()
             window_start = current_time - 60
 
-            # Clean old entries
-            rate_limit_state[client_ip] = [
-                t for t in rate_limit_state[client_ip] if t > window_start
-            ]
+            with rate_limit_lock:
+                # Clean old entries
+                rate_limit_state[client_ip] = [
+                    t for t in rate_limit_state[client_ip] if t > window_start
+                ]
 
-            current_count = len(rate_limit_state[client_ip])
-            remaining = max(0, rate_limit_config - current_count)
-            reset_time = int(window_start + 60)
+                current_count = len(rate_limit_state[client_ip])
+                remaining = max(0, rate_limit_config - current_count)
+                reset_time = int(window_start + 60)
 
-            if current_count >= rate_limit_config:
-                logger.warning(f"Rate limit exceeded for {client_ip}")
-                raise HTTPException(
-                    status_code=429,
-                    detail="Rate limit exceeded. Try again later.",
-                    headers={
-                        "X-RateLimit-Limit": str(rate_limit_config),
-                        "X-RateLimit-Remaining": "0",
-                        "X-RateLimit-Reset": str(reset_time),
-                        "Retry-After": str(reset_time - int(current_time)),
-                    },
-                )
+                if current_count >= rate_limit_config:
+                    logger.warning(f"Rate limit exceeded for {client_ip}")
+                    raise HTTPException(
+                        status_code=429,
+                        detail="Rate limit exceeded. Try again later.",
+                        headers={
+                            "X-RateLimit-Limit": str(rate_limit_config),
+                            "X-RateLimit-Remaining": "0",
+                            "X-RateLimit-Reset": str(reset_time),
+                            "Retry-After": str(reset_time - int(current_time)),
+                        },
+                    )
 
-            rate_limit_state[client_ip].append(current_time)
-            return {
-                "limit": rate_limit_config,
-                "remaining": remaining - 1,  # After this request
-                "reset": reset_time,
-            }
+                rate_limit_state[client_ip].append(current_time)
+                return {
+                    "limit": rate_limit_config,
+                    "remaining": remaining - 1,  # After this request
+                    "reset": reset_time,
+                }
 
         # Create inference engine
         engine_config = InferenceConfig(
@@ -690,8 +693,9 @@ class SimpleModelServer:
         max_batch_size = self.MAX_BATCH_SIZE
         rate_limit = self.RATE_LIMIT_PER_MINUTE
 
-        # Security: Simple in-memory rate limiting
+        # Security: Simple in-memory rate limiting with thread safety
         rate_limit_state = defaultdict(list)
+        rate_limit_lock = threading.Lock()
 
         class Handler(BaseHTTPRequestHandler):
             def _send_security_headers(self):
@@ -706,14 +710,15 @@ class SimpleModelServer:
                     return True
                 client_ip = self.client_address[0]
                 current_time = time.time()
-                # Clean old entries
-                rate_limit_state[client_ip] = [
-                    t for t in rate_limit_state[client_ip] if current_time - t < 60
-                ]
-                if len(rate_limit_state[client_ip]) >= rate_limit:
-                    return False
-                rate_limit_state[client_ip].append(current_time)
-                return True
+                with rate_limit_lock:
+                    # Clean old entries
+                    rate_limit_state[client_ip] = [
+                        t for t in rate_limit_state[client_ip] if current_time - t < 60
+                    ]
+                    if len(rate_limit_state[client_ip]) >= rate_limit:
+                        return False
+                    rate_limit_state[client_ip].append(current_time)
+                    return True
 
             def do_GET(self):
                 if self.path == "/health":
@@ -747,6 +752,8 @@ class SimpleModelServer:
                             raise ValueError("Missing Content-Length header")
 
                         content_length = int(content_length_header)
+                        if content_length < 0:
+                            raise ValueError("Invalid Content-Length: negative value")
                         if content_length > max_request_size:
                             self.send_response(413)
                             self.send_header("Content-Type", "application/json")

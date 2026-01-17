@@ -550,8 +550,12 @@ def discover_plugins() -> List[str]:
             try:
                 plugin_class = ep.load()
                 PluginManager.get_instance().register(plugin_class)
-            except Exception:
-                pass
+            except Exception as e:
+                import logging
+
+                logging.getLogger(__name__).debug(
+                    f"Failed to load plugin '{ep.name}': {e}"
+                )
 
     except ImportError:
         pass

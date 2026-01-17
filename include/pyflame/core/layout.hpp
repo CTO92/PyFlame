@@ -159,14 +159,28 @@ struct MeshLayout {
     }
 
     /// Compute memory required per PE (max across all PEs)
+    /// Returns 0 if overflow would occur
     size_t memory_per_pe(const std::vector<int64_t>& tensor_shape,
                          size_t element_size) const {
         size_t max_bytes = 0;
+        constexpr int64_t MAX_NUMEL = INT64_MAX / 8;  // Conservative limit
+
         for (int32_t r = 0; r < pe_rows; ++r) {
             for (int32_t c = 0; c < pe_cols; ++c) {
                 auto tile = tile_shape({r, c}, tensor_shape);
                 int64_t numel = 1;
-                for (auto d : tile) numel *= d;
+                for (auto d : tile) {
+                    // Check for overflow before multiplication
+                    if (d != 0 && numel > MAX_NUMEL / d) {
+                        return 0;  // Overflow would occur
+                    }
+                    numel *= d;
+                }
+                // Check for overflow in bytes calculation
+                if (element_size != 0 &&
+                    static_cast<size_t>(numel) > SIZE_MAX / element_size) {
+                    return 0;  // Overflow would occur
+                }
                 size_t bytes = static_cast<size_t>(numel) * element_size;
                 max_bytes = std::max(max_bytes, bytes);
             }
@@ -214,7 +228,9 @@ namespace std {
 template <>
 struct hash<pyflame::PECoord> {
     size_t operator()(const pyflame::PECoord& coord) const {
-        return hash<int64_t>()(static_cast<int64_t>(coord.row) << 32 | coord.col);
+        // Cast to int64_t BEFORE shifting to avoid undefined behavior
+        return hash<int64_t>()((static_cast<int64_t>(coord.row) << 32) |
+                               static_cast<int64_t>(static_cast<uint32_t>(coord.col)));
     }
 };
 }  // namespace std

@@ -447,13 +447,23 @@ private:
                     int64_t K = a_shape[1];
                     int64_t N = b_shape[1];
 
+                    // Check for potential overflow in index calculations
+                    constexpr int64_t MAX_DIM = INT64_MAX / sizeof(float);
+                    if (M > MAX_DIM / K || K > MAX_DIM / N || M > MAX_DIM / N) {
+                        throw std::runtime_error("Matrix dimensions too large - index overflow risk");
+                    }
+
+                    int64_t a_stride = K;
+                    int64_t b_stride = N;
+                    int64_t c_stride = N;
+
                     for (int64_t i = 0; i < M; ++i) {
                         for (int64_t j = 0; j < N; ++j) {
                             float sum = 0.0f;
                             for (int64_t k = 0; k < K; ++k) {
-                                sum += input_ptrs[0][i * K + k] * input_ptrs[1][k * N + j];
+                                sum += input_ptrs[0][i * a_stride + k] * input_ptrs[1][k * b_stride + j];
                             }
-                            out[i * N + j] = sum;
+                            out[i * c_stride + j] = sum;
                         }
                     }
                 } else {
