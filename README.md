@@ -2,10 +2,11 @@
 
 **Native Deep Learning Framework for Cerebras WSE**
 
-> **PRE-RELEASE ALPHA 1.0**
+> **PRE-RELEASE ALPHA 2.0**
 >
 > This software is in early development and is not yet ready for production use.
 > APIs may change without notice. Use at your own risk.
+> Project is moving closer to beta, still needs transforms.py to have functionality and not placeholder functions.
 
 PyFlame is a tensor computation library designed natively for the Cerebras Wafer-Scale Engine (WSE), featuring lazy evaluation, automatic CSL code generation, and a Python-first API.
 
