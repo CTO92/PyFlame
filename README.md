@@ -11,11 +11,11 @@ PyFlame is a tensor computation library designed natively for the Cerebras Wafer
 
 ## About OA Quantum Labs
 
-PyFlame is developed by **[OA Quantum Labs](https://oaqlabs.com)**, a specialized engineering firm focused on high-performance computing and tooling that breaks vendor lock-in.
+PyFlame is developed by **[OA Quantum Labs](https://oaqlabs.com)**, a specialized engineering firm focused on high-performance and quantum computing.
 
 ### What We Do
 
-In this context We help organizations unlock the full potential of specialized hardware through custom developer tools, optimized frameworks, and performance engineering:
+In the context of the PyFlame project we help organizations unlock the full potential of specialized hardware through custom developer tools, optimized frameworks, and performance engineering:
 
 - **Custom Framework Development** — Native tooling designed for your specific accelerator architecture
 - **Performance Optimization** — Squeeze maximum throughput from your existing hardware investments
