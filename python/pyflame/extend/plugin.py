@@ -166,8 +166,8 @@ class Plugin(ABC):
         self._initialized = False
         # Initialize mutable attributes per-instance to avoid shared state
         # Subclasses should override these in their own __init__ or as class attributes
-        self.dependencies: List[str] = list(getattr(self.__class__, 'dependencies', []))
-        self.tags: List[str] = list(getattr(self.__class__, 'tags', []))
+        self.dependencies: List[str] = list(getattr(self.__class__, "dependencies", []))
+        self.tags: List[str] = list(getattr(self.__class__, "tags", []))
 
     @abstractmethod
     def setup(self):

@@ -89,6 +89,7 @@ class TensorInspector:
                     "std": float(data.std()),
                 }
                 import numpy as np
+
                 info["has_nan"] = bool(np.isnan(data).any())
                 info["has_inf"] = bool(np.isinf(data).any())
             except Exception:
