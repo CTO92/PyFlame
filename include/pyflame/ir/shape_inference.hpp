@@ -295,4 +295,47 @@ inline TensorSpec infer_softmax_spec(
     return input;
 }
 
+/// Infer output spec for slice operation
+inline TensorSpec infer_slice_spec(
+    const TensorSpec& input,
+    int dim,
+    int64_t start,
+    int64_t end
+) {
+    int ndim = static_cast<int>(input.shape.size());
+
+    // Handle negative dimension
+    if (dim < 0) dim += ndim;
+    if (dim < 0 || dim >= ndim) {
+        throw std::runtime_error("slice: dimension out of range");
+    }
+
+    int64_t dim_size = input.shape[dim];
+
+    // Handle negative indices
+    if (start < 0) start += dim_size;
+    if (end < 0) end += dim_size;
+
+    // Clamp to valid range
+    start = std::max(int64_t(0), std::min(start, dim_size));
+    end = std::max(int64_t(0), std::min(end, dim_size));
+
+    if (end <= start) {
+        throw std::runtime_error("slice: end must be greater than start");
+    }
+
+    std::vector<int64_t> new_shape = input.shape;
+    new_shape[dim] = end - start;
+
+    return TensorSpec(new_shape, input.dtype, input.layout);
+}
+
+/// Infer output spec for dtype conversion (cast)
+inline TensorSpec infer_cast_spec(
+    const TensorSpec& input,
+    DType new_dtype
+) {
+    return TensorSpec(input.shape, new_dtype, input.layout);
+}
+
 }  // namespace pyflame::ir

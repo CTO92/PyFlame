@@ -3,6 +3,7 @@
 #include <cmath>
 #include <algorithm>
 #include <limits>
+#include <functional>
 
 namespace pyflame {
 
@@ -405,6 +406,52 @@ void TensorImpl::execute_cpu() {
 
                 // Return mean loss
                 output[0] = (valid_count > 0) ? total_loss / static_cast<float>(valid_count) : 0.0f;
+            }
+            break;
+        }
+
+        case ir::OpType::SLICE: {
+            if (input_data[0]) {
+                const auto& input_shape = inputs[0]->output_spec().shape();
+                int ndim = static_cast<int>(input_shape.size());
+
+                int dim = node_->get_attr<int>("dim", 0);
+                int64_t start = node_->get_attr<int64_t>("start", 0);
+                int64_t end = node_->get_attr<int64_t>("end", input_shape[dim]);
+
+                // Calculate strides for input tensor
+                std::vector<int64_t> input_strides(ndim);
+                input_strides[ndim - 1] = 1;
+                for (int i = ndim - 2; i >= 0; --i) {
+                    input_strides[i] = input_strides[i + 1] * input_shape[i + 1];
+                }
+
+                // Calculate strides for output tensor
+                const auto& output_shape = node_->output_spec().shape();
+                std::vector<int64_t> output_strides(ndim);
+                output_strides[ndim - 1] = 1;
+                for (int i = ndim - 2; i >= 0; --i) {
+                    output_strides[i] = output_strides[i + 1] * output_shape[i + 1];
+                }
+
+                // Copy sliced data
+                std::function<void(int, int64_t, int64_t)> copy_slice = [&](int d, int64_t in_offset, int64_t out_offset) {
+                    if (d == ndim) {
+                        output[out_offset] = input_data[0][in_offset];
+                        return;
+                    }
+
+                    int64_t size = (d == dim) ? (end - start) : output_shape[d];
+                    int64_t in_start = (d == dim) ? start : 0;
+
+                    for (int64_t i = 0; i < size; ++i) {
+                        copy_slice(d + 1,
+                                   in_offset + (in_start + i) * input_strides[d],
+                                   out_offset + i * output_strides[d]);
+                    }
+                };
+
+                copy_slice(0, 0, 0);
             }
             break;
         }

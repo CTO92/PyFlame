@@ -244,13 +244,63 @@ Tensor Tensor::contiguous() const {
 // ============================================================================
 
 Tensor Tensor::slice(int dim, int64_t start, int64_t end) const {
-    // Simplified slice - would need proper implementation
-    throw std::runtime_error("slice not yet implemented");
+    if (!impl_) return Tensor();
+
+    auto graph = impl_->graph();
+    auto input_spec = impl_->node()->output_spec();
+
+    // Infer output spec
+    auto output_spec = ir::infer_slice_spec(input_spec, dim, start, end);
+
+    // Normalize dimension
+    int ndim = static_cast<int>(input_spec.shape.size());
+    if (dim < 0) dim += ndim;
+
+    // Normalize start/end
+    int64_t dim_size = input_spec.shape[dim];
+    if (start < 0) start += dim_size;
+    if (end < 0) end += dim_size;
+    start = std::max(int64_t(0), std::min(start, dim_size));
+    end = std::max(int64_t(0), std::min(end, dim_size));
+
+    // Create slice node
+    auto node = graph->create_op(
+        ir::OpType::SLICE,
+        {impl_->node()},
+        output_spec,
+        "slice_" + std::to_string(graph->num_nodes())
+    );
+
+    node->set_attr("dim", dim);
+    node->set_attr("start", start);
+    node->set_attr("end", end);
+
+    return Tensor(TensorImpl::from_node(graph, node));
 }
 
 Tensor Tensor::operator[](int64_t idx) const {
-    // Simplified indexing - would need proper implementation
-    throw std::runtime_error("indexing not yet implemented");
+    if (!impl_) return Tensor();
+
+    auto s = impl_->shape();
+    if (s.empty()) {
+        throw std::runtime_error("Cannot index a scalar tensor");
+    }
+
+    // Handle negative index
+    if (idx < 0) idx += s[0];
+    if (idx < 0 || idx >= s[0]) {
+        throw std::runtime_error("Index " + std::to_string(idx) + " out of bounds for dimension of size " + std::to_string(s[0]));
+    }
+
+    // Slice along dimension 0 and squeeze
+    Tensor sliced = slice(0, idx, idx + 1);
+
+    // If original tensor was > 1D, squeeze the first dimension
+    if (s.size() > 1) {
+        return sliced.squeeze(0);
+    }
+
+    return sliced;
 }
 
 // ============================================================================
@@ -267,8 +317,100 @@ Tensor Tensor::to_layout(MeshLayout new_layout) const {
 Tensor Tensor::to(DType new_dtype) const {
     if (!impl_) return Tensor();
     if (impl_->dtype() == new_dtype) return *this;
-    // Type conversion would need implementation
-    throw std::runtime_error("dtype conversion not yet implemented");
+
+    // Force evaluation to get current data
+    Tensor t = *this;
+    t.eval();
+
+    const void* src_data = t.data_ptr();
+    auto s = t.shape();
+    int64_t n = t.numel();
+    DType src_dtype = t.dtype();
+
+    // Calculate new buffer size
+    size_t new_bytes = static_cast<size_t>(n) * dtype_size(new_dtype);
+    std::vector<uint8_t> new_data(new_bytes);
+
+    // Convert data based on dtype combinations
+    auto convert = [&]<typename SrcT, typename DstT>() {
+        const SrcT* src = static_cast<const SrcT*>(src_data);
+        DstT* dst = reinterpret_cast<DstT*>(new_data.data());
+        for (int64_t i = 0; i < n; ++i) {
+            dst[i] = static_cast<DstT>(src[i]);
+        }
+    };
+
+    // Handle all supported conversions
+    if (src_dtype == DType::Float32) {
+        const float* src = static_cast<const float*>(src_data);
+        if (new_dtype == DType::Int32) {
+            int32_t* dst = reinterpret_cast<int32_t*>(new_data.data());
+            for (int64_t i = 0; i < n; ++i) dst[i] = static_cast<int32_t>(src[i]);
+        } else if (new_dtype == DType::Int64) {
+            int64_t* dst = reinterpret_cast<int64_t*>(new_data.data());
+            for (int64_t i = 0; i < n; ++i) dst[i] = static_cast<int64_t>(src[i]);
+        } else if (new_dtype == DType::Float64) {
+            double* dst = reinterpret_cast<double*>(new_data.data());
+            for (int64_t i = 0; i < n; ++i) dst[i] = static_cast<double>(src[i]);
+        } else if (new_dtype == DType::Int16) {
+            int16_t* dst = reinterpret_cast<int16_t*>(new_data.data());
+            for (int64_t i = 0; i < n; ++i) dst[i] = static_cast<int16_t>(src[i]);
+        } else if (new_dtype == DType::Int8) {
+            int8_t* dst = reinterpret_cast<int8_t*>(new_data.data());
+            for (int64_t i = 0; i < n; ++i) dst[i] = static_cast<int8_t>(src[i]);
+        } else if (new_dtype == DType::Bool) {
+            uint8_t* dst = reinterpret_cast<uint8_t*>(new_data.data());
+            for (int64_t i = 0; i < n; ++i) dst[i] = src[i] != 0.0f ? 1 : 0;
+        } else {
+            throw std::runtime_error("Unsupported dtype conversion from float32 to " + dtype_name(new_dtype));
+        }
+    } else if (src_dtype == DType::Int32) {
+        const int32_t* src = static_cast<const int32_t*>(src_data);
+        if (new_dtype == DType::Float32) {
+            float* dst = reinterpret_cast<float*>(new_data.data());
+            for (int64_t i = 0; i < n; ++i) dst[i] = static_cast<float>(src[i]);
+        } else if (new_dtype == DType::Int64) {
+            int64_t* dst = reinterpret_cast<int64_t*>(new_data.data());
+            for (int64_t i = 0; i < n; ++i) dst[i] = static_cast<int64_t>(src[i]);
+        } else if (new_dtype == DType::Float64) {
+            double* dst = reinterpret_cast<double*>(new_data.data());
+            for (int64_t i = 0; i < n; ++i) dst[i] = static_cast<double>(src[i]);
+        } else {
+            throw std::runtime_error("Unsupported dtype conversion from int32 to " + dtype_name(new_dtype));
+        }
+    } else if (src_dtype == DType::Int64) {
+        const int64_t* src = static_cast<const int64_t*>(src_data);
+        if (new_dtype == DType::Float32) {
+            float* dst = reinterpret_cast<float*>(new_data.data());
+            for (int64_t i = 0; i < n; ++i) dst[i] = static_cast<float>(src[i]);
+        } else if (new_dtype == DType::Int32) {
+            int32_t* dst = reinterpret_cast<int32_t*>(new_data.data());
+            for (int64_t i = 0; i < n; ++i) dst[i] = static_cast<int32_t>(src[i]);
+        } else if (new_dtype == DType::Float64) {
+            double* dst = reinterpret_cast<double*>(new_data.data());
+            for (int64_t i = 0; i < n; ++i) dst[i] = static_cast<double>(src[i]);
+        } else {
+            throw std::runtime_error("Unsupported dtype conversion from int64 to " + dtype_name(new_dtype));
+        }
+    } else if (src_dtype == DType::Float64) {
+        const double* src = static_cast<const double*>(src_data);
+        if (new_dtype == DType::Float32) {
+            float* dst = reinterpret_cast<float*>(new_data.data());
+            for (int64_t i = 0; i < n; ++i) dst[i] = static_cast<float>(src[i]);
+        } else if (new_dtype == DType::Int32) {
+            int32_t* dst = reinterpret_cast<int32_t*>(new_data.data());
+            for (int64_t i = 0; i < n; ++i) dst[i] = static_cast<int32_t>(src[i]);
+        } else if (new_dtype == DType::Int64) {
+            int64_t* dst = reinterpret_cast<int64_t*>(new_data.data());
+            for (int64_t i = 0; i < n; ++i) dst[i] = static_cast<int64_t>(src[i]);
+        } else {
+            throw std::runtime_error("Unsupported dtype conversion from float64 to " + dtype_name(new_dtype));
+        }
+    } else {
+        throw std::runtime_error("Unsupported source dtype for conversion: " + dtype_name(src_dtype));
+    }
+
+    return Tensor::from_data(new_data.data(), s, new_dtype, layout(), new_bytes);
 }
 
 // ============================================================================

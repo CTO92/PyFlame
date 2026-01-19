@@ -721,14 +721,402 @@ StateDict read_safetensors(std::istream& in) {
     return result;
 }
 
-void write_numpy(const StateDict& state_dict, const std::string& path) {
-    // NPZ format is a ZIP of .npy files
-    // Simplified implementation - just save each tensor
-    throw std::runtime_error("NumPy format not implemented yet");
+/// Get NumPy dtype string from PyFlame DType
+std::string dtype_to_numpy_descr(DType dtype) {
+    // NumPy dtype descriptors: '<' = little-endian, '>' = big-endian
+    // Using little-endian as it's most common
+    switch (dtype) {
+        case DType::Float32: return "<f4";
+        case DType::Float64: return "<f8";
+        case DType::Int8: return "<i1";
+        case DType::Int16: return "<i2";
+        case DType::Int32: return "<i4";
+        case DType::Int64: return "<i8";
+        case DType::UInt8: return "<u1";
+        case DType::Bool: return "|b1";
+        case DType::Float16: return "<f2";
+        case DType::BFloat16: return "<V2";  // Custom 2-byte type
+        default:
+            throw std::runtime_error("Unsupported dtype for NumPy format: " + dtype_name(dtype));
+    }
 }
 
+/// Parse NumPy dtype string to PyFlame DType
+DType numpy_descr_to_dtype(const std::string& descr) {
+    // Handle both with and without endianness prefix
+    std::string d = descr;
+    if (d.size() > 1 && (d[0] == '<' || d[0] == '>' || d[0] == '|' || d[0] == '=')) {
+        d = d.substr(1);
+    }
+
+    if (d == "f4" || d == "float32") return DType::Float32;
+    if (d == "f8" || d == "float64") return DType::Float64;
+    if (d == "i1" || d == "int8") return DType::Int8;
+    if (d == "i2" || d == "int16") return DType::Int16;
+    if (d == "i4" || d == "int32") return DType::Int32;
+    if (d == "i8" || d == "int64") return DType::Int64;
+    if (d == "u1" || d == "uint8") return DType::UInt8;
+    if (d == "b1" || d == "bool") return DType::Bool;
+    if (d == "f2" || d == "float16") return DType::Float16;
+
+    throw std::runtime_error("Unsupported NumPy dtype: " + descr);
+}
+
+/// Write a single tensor in NPY format
+void write_npy(const Tensor& tensor, std::ostream& out) {
+    // NPY format v1.0:
+    // - Magic: \x93NUMPY
+    // - Version: 1.0 (2 bytes)
+    // - Header length: 2 bytes (little-endian)
+    // - Header: Python dict literal
+    // - Padding to 64-byte alignment
+    // - Raw data
+
+    // Build header dictionary
+    std::ostringstream header;
+    header << "{'descr': '" << dtype_to_numpy_descr(tensor.dtype()) << "', ";
+    header << "'fortran_order': False, ";
+    header << "'shape': (";
+
+    auto shape = tensor.shape();
+    for (size_t i = 0; i < shape.size(); ++i) {
+        header << shape[i];
+        if (i < shape.size() - 1) header << ", ";
+        else if (shape.size() == 1) header << ",";  // Single-element tuple needs trailing comma
+    }
+    header << "), }";
+
+    std::string header_str = header.str();
+
+    // Calculate padding for 64-byte alignment
+    // Total header = 6 (magic) + 2 (version) + 2 (header len) + header + padding + newline
+    size_t base_len = 6 + 2 + 2 + header_str.size() + 1;  // +1 for newline
+    size_t padding = (64 - (base_len % 64)) % 64;
+    header_str += std::string(padding, ' ');
+    header_str += '\n';
+
+    // Write magic number
+    const char magic[] = "\x93NUMPY";
+    out.write(magic, 6);
+
+    // Write version (1.0)
+    uint8_t version_major = 1;
+    uint8_t version_minor = 0;
+    out.write(reinterpret_cast<const char*>(&version_major), 1);
+    out.write(reinterpret_cast<const char*>(&version_minor), 1);
+
+    // Write header length (little-endian, 2 bytes for v1.0)
+    uint16_t header_len = static_cast<uint16_t>(header_str.size());
+    out.write(reinterpret_cast<const char*>(&header_len), 2);
+
+    // Write header
+    out.write(header_str.data(), header_str.size());
+
+    // Write tensor data
+    Tensor t = tensor;
+    t.eval();
+    const void* data = t.data_ptr();
+    size_t data_bytes = static_cast<size_t>(t.numel()) * dtype_size(t.dtype());
+    out.write(static_cast<const char*>(data), data_bytes);
+}
+
+/// Read a single tensor from NPY format
+Tensor read_npy(std::istream& in) {
+    // Read and verify magic number
+    char magic[6];
+    in.read(magic, 6);
+    if (!in.good() || magic[0] != '\x93' || std::strncmp(magic + 1, "NUMPY", 5) != 0) {
+        throw std::runtime_error("Invalid NPY file: bad magic number");
+    }
+
+    // Read version
+    uint8_t version_major, version_minor;
+    in.read(reinterpret_cast<char*>(&version_major), 1);
+    in.read(reinterpret_cast<char*>(&version_minor), 1);
+
+    // Read header length
+    uint32_t header_len;
+    if (version_major == 1) {
+        uint16_t len16;
+        in.read(reinterpret_cast<char*>(&len16), 2);
+        header_len = len16;
+    } else if (version_major == 2) {
+        in.read(reinterpret_cast<char*>(&header_len), 4);
+    } else {
+        throw std::runtime_error("Unsupported NPY version: " +
+                                  std::to_string(version_major) + "." +
+                                  std::to_string(version_minor));
+    }
+
+    // Security: Limit header size
+    if (header_len > 1024 * 1024) {
+        throw std::runtime_error("NPY header too large");
+    }
+
+    // Read header
+    std::string header(header_len, '\0');
+    in.read(header.data(), header_len);
+
+    // Parse header (simple parser for the expected format)
+    // Find 'descr': '...'
+    DType dtype = DType::Float32;
+    auto descr_pos = header.find("'descr':");
+    if (descr_pos != std::string::npos) {
+        auto quote1 = header.find('\'', descr_pos + 8);
+        auto quote2 = header.find('\'', quote1 + 1);
+        if (quote1 != std::string::npos && quote2 != std::string::npos) {
+            std::string descr = header.substr(quote1 + 1, quote2 - quote1 - 1);
+            dtype = numpy_descr_to_dtype(descr);
+        }
+    }
+
+    // Find 'shape': (...)
+    std::vector<int64_t> shape;
+    auto shape_pos = header.find("'shape':");
+    if (shape_pos != std::string::npos) {
+        auto paren1 = header.find('(', shape_pos);
+        auto paren2 = header.find(')', paren1);
+        if (paren1 != std::string::npos && paren2 != std::string::npos) {
+            std::string shape_str = header.substr(paren1 + 1, paren2 - paren1 - 1);
+            // Parse comma-separated integers
+            std::istringstream ss(shape_str);
+            std::string token;
+            while (std::getline(ss, token, ',')) {
+                // Trim whitespace
+                size_t start = token.find_first_not_of(" \t");
+                size_t end = token.find_last_not_of(" \t");
+                if (start != std::string::npos && end != std::string::npos) {
+                    token = token.substr(start, end - start + 1);
+                    if (!token.empty()) {
+                        shape.push_back(std::stoll(token));
+                    }
+                }
+            }
+        }
+    }
+
+    // Validate shape
+    int64_t numel = safe_numel(shape);
+    size_t data_bytes = safe_tensor_bytes(numel, dtype_size(dtype));
+
+    // Read tensor data
+    std::vector<uint8_t> buffer(data_bytes);
+    in.read(reinterpret_cast<char*>(buffer.data()), data_bytes);
+    if (!in.good()) {
+        throw std::runtime_error("Failed to read NPY tensor data");
+    }
+
+    return Tensor::from_data(buffer.data(), shape, dtype, MeshLayout::SinglePE(), data_bytes);
+}
+
+/// Simple ZIP file writer for NPZ format
+/// NPZ is just a ZIP archive containing .npy files
+class SimpleZipWriter {
+public:
+    explicit SimpleZipWriter(std::ostream& out) : out_(out), offset_(0) {}
+
+    void add_file(const std::string& name, const std::vector<uint8_t>& data) {
+        FileEntry entry;
+        entry.name = name;
+        entry.offset = offset_;
+        entry.size = data.size();
+
+        // Local file header
+        write32(0x04034b50);  // Signature
+        write16(20);          // Version needed
+        write16(0);           // Flags
+        write16(0);           // Compression (none)
+        write16(0);           // Mod time
+        write16(0);           // Mod date
+        write32(crc32(data)); // CRC-32
+        write32(static_cast<uint32_t>(data.size())); // Compressed size
+        write32(static_cast<uint32_t>(data.size())); // Uncompressed size
+        write16(static_cast<uint16_t>(name.size())); // File name length
+        write16(0);           // Extra field length
+
+        out_.write(name.data(), name.size());
+        out_.write(reinterpret_cast<const char*>(data.data()), data.size());
+
+        offset_ += 30 + name.size() + data.size();
+        entries_.push_back(entry);
+    }
+
+    void finish() {
+        uint32_t cd_offset = offset_;
+
+        // Write central directory
+        for (const auto& entry : entries_) {
+            write32(0x02014b50);  // Signature
+            write16(20);          // Version made by
+            write16(20);          // Version needed
+            write16(0);           // Flags
+            write16(0);           // Compression
+            write16(0);           // Mod time
+            write16(0);           // Mod date
+            write32(0);           // CRC (placeholder)
+            write32(static_cast<uint32_t>(entry.size)); // Compressed
+            write32(static_cast<uint32_t>(entry.size)); // Uncompressed
+            write16(static_cast<uint16_t>(entry.name.size())); // Name length
+            write16(0);           // Extra length
+            write16(0);           // Comment length
+            write16(0);           // Disk number
+            write16(0);           // Internal attrs
+            write32(0);           // External attrs
+            write32(static_cast<uint32_t>(entry.offset)); // Offset
+
+            out_.write(entry.name.data(), entry.name.size());
+            offset_ += 46 + entry.name.size();
+        }
+
+        uint32_t cd_size = offset_ - cd_offset;
+
+        // End of central directory
+        write32(0x06054b50);  // Signature
+        write16(0);           // Disk number
+        write16(0);           // CD disk
+        write16(static_cast<uint16_t>(entries_.size())); // Entries on disk
+        write16(static_cast<uint16_t>(entries_.size())); // Total entries
+        write32(cd_size);     // CD size
+        write32(cd_offset);   // CD offset
+        write16(0);           // Comment length
+    }
+
+private:
+    struct FileEntry {
+        std::string name;
+        uint32_t offset;
+        size_t size;
+    };
+
+    void write16(uint16_t v) {
+        out_.write(reinterpret_cast<const char*>(&v), 2);
+    }
+
+    void write32(uint32_t v) {
+        out_.write(reinterpret_cast<const char*>(&v), 4);
+    }
+
+    uint32_t crc32(const std::vector<uint8_t>& data) {
+        // Simple CRC32 implementation
+        uint32_t crc = 0xFFFFFFFF;
+        for (uint8_t byte : data) {
+            crc ^= byte;
+            for (int i = 0; i < 8; ++i) {
+                crc = (crc >> 1) ^ (0xEDB88320 & -(crc & 1));
+            }
+        }
+        return ~crc;
+    }
+
+    std::ostream& out_;
+    uint32_t offset_;
+    std::vector<FileEntry> entries_;
+};
+
+void write_numpy(const StateDict& state_dict, const std::string& path) {
+    // Check if single tensor (.npy) or multiple (.npz)
+    bool is_npz = path.size() >= 4 && path.substr(path.size() - 4) == ".npz";
+
+    if (!is_npz && state_dict.size() == 1) {
+        // Single tensor - write as .npy
+        std::ofstream out(path, std::ios::binary);
+        if (!out) {
+            throw std::runtime_error("Failed to open file for writing: " + path);
+        }
+        write_npy(state_dict.begin()->second, out);
+        return;
+    }
+
+    // Multiple tensors - write as .npz (ZIP of .npy files)
+    std::ofstream out(path, std::ios::binary);
+    if (!out) {
+        throw std::runtime_error("Failed to open file for writing: " + path);
+    }
+
+    SimpleZipWriter zip(out);
+
+    for (const auto& [name, tensor] : state_dict) {
+        // Write tensor to memory buffer
+        std::ostringstream npy_stream(std::ios::binary);
+        write_npy(tensor, npy_stream);
+        std::string npy_data = npy_stream.str();
+
+        std::vector<uint8_t> data(npy_data.begin(), npy_data.end());
+        zip.add_file(name + ".npy", data);
+    }
+
+    zip.finish();
+}
+
+/// Simple ZIP reader for NPZ format
 StateDict read_numpy(const std::string& path) {
-    throw std::runtime_error("NumPy format not implemented yet");
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        throw std::runtime_error("Failed to open file for reading: " + path);
+    }
+
+    // Check if it's a plain .npy file
+    char magic[6];
+    in.read(magic, 6);
+    in.seekg(0);
+
+    if (magic[0] == '\x93' && std::strncmp(magic + 1, "NUMPY", 5) == 0) {
+        // Single .npy file
+        StateDict result;
+        result["arr_0"] = read_npy(in);
+        return result;
+    }
+
+    // It's a ZIP file (.npz)
+    StateDict result;
+
+    // Read local file headers
+    while (in.good()) {
+        uint32_t sig;
+        in.read(reinterpret_cast<char*>(&sig), 4);
+
+        if (sig != 0x04034b50) {
+            // Not a local file header, might be central directory
+            break;
+        }
+
+        // Skip version, flags, compression, time, date
+        in.seekg(10, std::ios::cur);
+
+        uint32_t crc, comp_size, uncomp_size;
+        in.read(reinterpret_cast<char*>(&crc), 4);
+        in.read(reinterpret_cast<char*>(&comp_size), 4);
+        in.read(reinterpret_cast<char*>(&uncomp_size), 4);
+
+        uint16_t name_len, extra_len;
+        in.read(reinterpret_cast<char*>(&name_len), 2);
+        in.read(reinterpret_cast<char*>(&extra_len), 2);
+
+        // Security: Validate sizes
+        if (name_len > 4096 || uncomp_size > MAX_TENSOR_BYTES) {
+            throw std::runtime_error("NPZ: invalid entry size");
+        }
+
+        // Read filename
+        std::string filename(name_len, '\0');
+        in.read(filename.data(), name_len);
+
+        // Skip extra field
+        in.seekg(extra_len, std::ios::cur);
+
+        // Read file data
+        std::vector<uint8_t> data(uncomp_size);
+        in.read(reinterpret_cast<char*>(data.data()), uncomp_size);
+
+        // Parse the .npy data
+        if (filename.size() >= 4 && filename.substr(filename.size() - 4) == ".npy") {
+            std::string tensor_name = filename.substr(0, filename.size() - 4);
+            std::istringstream npy_stream(std::string(data.begin(), data.end()));
+            result[tensor_name] = read_npy(npy_stream);
+        }
+    }
+
+    return result;
 }
 
 }  // namespace detail
