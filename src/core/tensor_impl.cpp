@@ -264,6 +264,151 @@ void TensorImpl::execute_cpu() {
             break;
         }
 
+        case ir::OpType::SOFTMAX: {
+            if (input_data[0]) {
+                const auto& shape = inputs[0]->output_spec().shape();
+                int ndim = static_cast<int>(shape.size());
+                int dim = node_->get_attr<int>("dim", -1);
+                if (dim < 0) dim += ndim;
+
+                // Calculate strides for the softmax dimension
+                int64_t outer_size = 1;
+                int64_t dim_size = shape[dim];
+                int64_t inner_size = 1;
+                for (int i = 0; i < dim; ++i) outer_size *= shape[i];
+                for (int i = dim + 1; i < ndim; ++i) inner_size *= shape[i];
+
+                // Apply softmax along the specified dimension
+                for (int64_t outer = 0; outer < outer_size; ++outer) {
+                    for (int64_t inner = 0; inner < inner_size; ++inner) {
+                        // Find max for numerical stability
+                        float max_val = -std::numeric_limits<float>::infinity();
+                        for (int64_t d = 0; d < dim_size; ++d) {
+                            int64_t idx = outer * dim_size * inner_size + d * inner_size + inner;
+                            max_val = std::max(max_val, input_data[0][idx]);
+                        }
+
+                        // Compute exp(x - max) and sum
+                        float sum = 0.0f;
+                        for (int64_t d = 0; d < dim_size; ++d) {
+                            int64_t idx = outer * dim_size * inner_size + d * inner_size + inner;
+                            output[idx] = std::exp(input_data[0][idx] - max_val);
+                            sum += output[idx];
+                        }
+
+                        // Normalize
+                        for (int64_t d = 0; d < dim_size; ++d) {
+                            int64_t idx = outer * dim_size * inner_size + d * inner_size + inner;
+                            output[idx] /= sum;
+                        }
+                    }
+                }
+            }
+            break;
+        }
+
+        case ir::OpType::LOG_SOFTMAX: {
+            if (input_data[0]) {
+                const auto& shape = inputs[0]->output_spec().shape();
+                int ndim = static_cast<int>(shape.size());
+                int dim = node_->get_attr<int>("dim", -1);
+                if (dim < 0) dim += ndim;
+
+                // Calculate strides for the softmax dimension
+                int64_t outer_size = 1;
+                int64_t dim_size = shape[dim];
+                int64_t inner_size = 1;
+                for (int i = 0; i < dim; ++i) outer_size *= shape[i];
+                for (int i = dim + 1; i < ndim; ++i) inner_size *= shape[i];
+
+                // Apply log-softmax using log-sum-exp trick
+                for (int64_t outer = 0; outer < outer_size; ++outer) {
+                    for (int64_t inner = 0; inner < inner_size; ++inner) {
+                        // Find max for numerical stability
+                        float max_val = -std::numeric_limits<float>::infinity();
+                        for (int64_t d = 0; d < dim_size; ++d) {
+                            int64_t idx = outer * dim_size * inner_size + d * inner_size + inner;
+                            max_val = std::max(max_val, input_data[0][idx]);
+                        }
+
+                        // Compute log-sum-exp
+                        float log_sum_exp = 0.0f;
+                        for (int64_t d = 0; d < dim_size; ++d) {
+                            int64_t idx = outer * dim_size * inner_size + d * inner_size + inner;
+                            log_sum_exp += std::exp(input_data[0][idx] - max_val);
+                        }
+                        log_sum_exp = max_val + std::log(log_sum_exp);
+
+                        // Compute log-softmax: x - log_sum_exp
+                        for (int64_t d = 0; d < dim_size; ++d) {
+                            int64_t idx = outer * dim_size * inner_size + d * inner_size + inner;
+                            output[idx] = input_data[0][idx] - log_sum_exp;
+                        }
+                    }
+                }
+            }
+            break;
+        }
+
+        case ir::OpType::CROSS_ENTROPY_LOSS: {
+            // Cross-entropy loss: combines log_softmax and nll_loss
+            // Input 0: logits (N, C) or (N, C, ...) - predictions
+            // Input 1: targets (N,) or (N, ...) - class indices
+            if (input_data[0] && input_data[1]) {
+                const auto& logits_shape = inputs[0]->output_spec().shape();
+                int64_t batch_size = logits_shape[0];
+                int64_t num_classes = logits_shape[1];
+
+                // Get optional attributes
+                int64_t ignore_index = node_->get_attr<int64_t>("ignore_index", -100);
+                float label_smoothing = node_->get_attr<float>("label_smoothing", 0.0f);
+
+                float total_loss = 0.0f;
+                int64_t valid_count = 0;
+
+                for (int64_t n = 0; n < batch_size; ++n) {
+                    int64_t target = static_cast<int64_t>(input_data[1][n]);
+
+                    // Skip ignored indices
+                    if (target == ignore_index) {
+                        continue;
+                    }
+
+                    // Compute log-softmax for this sample
+                    float max_val = -std::numeric_limits<float>::infinity();
+                    for (int64_t c = 0; c < num_classes; ++c) {
+                        max_val = std::max(max_val, input_data[0][n * num_classes + c]);
+                    }
+
+                    float log_sum_exp = 0.0f;
+                    for (int64_t c = 0; c < num_classes; ++c) {
+                        log_sum_exp += std::exp(input_data[0][n * num_classes + c] - max_val);
+                    }
+                    log_sum_exp = max_val + std::log(log_sum_exp);
+
+                    if (label_smoothing > 0.0f) {
+                        // With label smoothing: loss = (1 - smooth) * nll + smooth * uniform_loss
+                        float nll = log_sum_exp - input_data[0][n * num_classes + target];
+                        float smooth_loss = 0.0f;
+                        for (int64_t c = 0; c < num_classes; ++c) {
+                            smooth_loss += log_sum_exp - input_data[0][n * num_classes + c];
+                        }
+                        smooth_loss /= static_cast<float>(num_classes);
+                        total_loss += (1.0f - label_smoothing) * nll + label_smoothing * smooth_loss;
+                    } else {
+                        // Standard cross-entropy: -log_softmax[target]
+                        float log_softmax_target = input_data[0][n * num_classes + target] - log_sum_exp;
+                        total_loss += -log_softmax_target;
+                    }
+                    valid_count++;
+                }
+
+                // Return mean loss
+                output[0] = (valid_count > 0) ? total_loss / static_cast<float>(valid_count) : 0.0f;
+            }
+            break;
+        }
+
         default:
             throw std::runtime_error("Unsupported operation for CPU execution: " +
                                     ir::op_type_name(op));
