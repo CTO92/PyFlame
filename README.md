@@ -10,6 +10,18 @@
 
 PyFlame is a tensor computation library designed natively for the Cerebras Wafer-Scale Engine (WSE), featuring lazy evaluation, automatic CSL code generation, and a Python-first API.
 
+## A Quick Note For Developers
+
+The Nvidia vendor lock-in that CUDA/PyTorch created has become a multi-million dollar nightmare for a lot of enterprises that now struggle to get GPUs for their own AI projects. Understand what that means.
+
+I released PyFlame and the very next day my phone was ringing almost off the hook. By the end of the next day I had secured THREE consulting agreements at $250k each and started discussions on a contract that as of this writing (just 6 days following the release of PyFlame) is looking like $2.8M
+
+Understand what that means. I found a massive pain point, figured out how to solve it, actually GAVE AWAY the solution (sort of) and now I've obtained over $3.5 million in revenue.
+
+Want to learn the SYSTEM that I use for doing that (because this is the 9th time I've done this exact thing this exact way)
+
+Just go to: https://oaqlabs.com/vibe.html 
+
 ## About OA Quantum Labs
 
 PyFlame is developed by **[OA Quantum Labs](https://oaqlabs.com)**, a specialized engineering firm focused on high-performance and quantum computing.
