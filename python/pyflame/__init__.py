@@ -38,6 +38,7 @@ try:
         log_softmax,
         matmul,
         relu,
+        rocm_is_available,
         sigmoid,
         silu,
         sin,
@@ -48,6 +49,32 @@ try:
     )
 
     _CPP_AVAILABLE = True
+
+    # Conditional imports for ROCm functions (only available if compiled with ROCm)
+    if rocm_is_available():
+        from ._pyflame_cpp import (
+            rocm_device_count,
+            rocm_get_device,
+            rocm_get_device_info,
+            rocm_set_device,
+            rocm_synchronize,
+        )
+    else:
+        # Provide stub functions when ROCm is not available
+        def rocm_device_count():
+            return 0
+
+        def rocm_get_device():
+            return -1
+
+        def rocm_get_device_info(device_id=0):
+            raise RuntimeError("ROCm is not available")
+
+        def rocm_set_device(device_id):
+            raise RuntimeError("ROCm is not available")
+
+        def rocm_synchronize():
+            raise RuntimeError("ROCm is not available")
 except ImportError:
     # C++ bindings not built - provide placeholder types for ecosystem modules
     # Core tensor operations will not work, but tools/integrations can be imported
@@ -91,6 +118,25 @@ except ImportError:
     CodeGenResult = None
     CSLCodeGenerator = None
     compile_to_csl = None
+
+    # ROCm stubs when C++ not available
+    def rocm_is_available():
+        return False
+
+    def rocm_device_count():
+        return 0
+
+    def rocm_get_device():
+        return -1
+
+    def rocm_get_device_info(device_id=0):
+        raise RuntimeError("PyFlame C++ bindings not available")
+
+    def rocm_set_device(device_id):
+        raise RuntimeError("PyFlame C++ bindings not available")
+
+    def rocm_synchronize():
+        raise RuntimeError("PyFlame C++ bindings not available")
 
 # Convenient dtype aliases
 if _CPP_AVAILABLE:
@@ -397,6 +443,163 @@ def print_graph(t):
         print("No graph associated with tensor")
 
 
+# ============================================================================
+# Device Management
+# ============================================================================
+
+# Backend type enum (mirrors C++ Backend enum)
+class Backend:
+    """Backend type for computation."""
+    CPU = "cpu"
+    SIMULATOR = "cerebras:simulator"
+    HARDWARE = "cerebras"
+    ROCM = "rocm"
+
+
+# Current device state
+_current_backend = Backend.CPU
+_current_device_id = 0
+
+
+def set_device(device: str) -> None:
+    """Set the compute device for PyFlame operations.
+
+    Args:
+        device: Device specification string:
+            - 'cpu': Use CPU backend
+            - 'cerebras': Use Cerebras hardware
+            - 'cerebras:simulator': Use Cerebras simulator
+            - 'rocm': Use first AMD GPU
+            - 'rocm:0', 'rocm:1', etc.: Use specific AMD GPU
+
+    Raises:
+        ValueError: If device specification is invalid
+        RuntimeError: If requested device is not available
+
+    Example:
+        >>> import pyflame as pf
+        >>> pf.set_device('rocm')  # Use AMD GPU
+        >>> pf.set_device('rocm:1')  # Use second AMD GPU
+        >>> pf.set_device('cpu')  # Use CPU
+    """
+    global _current_backend, _current_device_id
+
+    device = device.lower().strip()
+
+    if device == 'cpu':
+        _current_backend = Backend.CPU
+        _current_device_id = 0
+        return
+
+    if device.startswith('cerebras'):
+        if ':simulator' in device:
+            _current_backend = Backend.SIMULATOR
+        else:
+            _current_backend = Backend.HARDWARE
+        _current_device_id = 0
+        return
+
+    if device.startswith('rocm'):
+        if not rocm_is_available():
+            raise RuntimeError(
+                "ROCm backend requested but not available. "
+                "Ensure ROCm is installed and a compatible AMD GPU is present."
+            )
+
+        _current_backend = Backend.ROCM
+
+        # Parse device ID if specified
+        if ':' in device:
+            try:
+                device_id = int(device.split(':')[1])
+            except ValueError:
+                raise ValueError(f"Invalid ROCm device specification: {device}")
+
+            if device_id >= rocm_device_count():
+                raise ValueError(
+                    f"ROCm device {device_id} requested but only "
+                    f"{rocm_device_count()} devices available"
+                )
+            _current_device_id = device_id
+            rocm_set_device(device_id)
+        else:
+            _current_device_id = 0
+            rocm_set_device(0)
+        return
+
+    raise ValueError(
+        f"Unknown device: {device}. "
+        "Valid options: 'cpu', 'cerebras', 'cerebras:simulator', 'rocm', 'rocm:N'"
+    )
+
+
+def get_device() -> str:
+    """Get the current compute device.
+
+    Returns:
+        Device specification string
+
+    Example:
+        >>> pf.set_device('rocm:0')
+        >>> pf.get_device()
+        'rocm:0'
+    """
+    global _current_backend, _current_device_id
+
+    if _current_backend == Backend.CPU:
+        return 'cpu'
+    elif _current_backend == Backend.SIMULATOR:
+        return 'cerebras:simulator'
+    elif _current_backend == Backend.HARDWARE:
+        return 'cerebras'
+    elif _current_backend == Backend.ROCM:
+        return f'rocm:{_current_device_id}'
+    else:
+        return 'unknown'
+
+
+def device_info() -> dict:
+    """Get information about the current compute device.
+
+    Returns:
+        Dictionary with device information
+
+    Example:
+        >>> pf.set_device('rocm')
+        >>> pf.device_info()
+        {'type': 'rocm', 'name': 'AMD Instinct MI100', 'architecture': 'gfx908', ...}
+    """
+    global _current_backend, _current_device_id
+
+    if _current_backend == Backend.CPU:
+        import os
+        import platform
+        return {
+            'type': 'cpu',
+            'name': platform.processor() or 'Unknown CPU',
+            'cores': os.cpu_count() or 1,
+        }
+    elif _current_backend == Backend.ROCM:
+        info = rocm_get_device_info(_current_device_id)
+        info['type'] = 'rocm'
+        return info
+    else:
+        return {'type': 'cerebras'}
+
+
+def synchronize() -> None:
+    """Synchronize the current compute device.
+
+    For ROCm, this waits for all GPU operations to complete.
+    For CPU, this is a no-op.
+    """
+    global _current_backend
+
+    if _current_backend == Backend.ROCM:
+        rocm_synchronize()
+    # CPU and Cerebras are synchronous by default
+
+
 # Version (Pre-Release Alpha 1.0)
 try:
     from ._version import __version__
@@ -415,6 +618,7 @@ __all__ = [
     "TensorSpec",
     "Node",
     "Graph",
+    "Backend",
     # Dtype aliases
     "float32",
     "float16",
@@ -457,6 +661,18 @@ __all__ = [
     "get_node",
     "dtype_size",
     "dtype_name",
+    # Device management
+    "set_device",
+    "get_device",
+    "device_info",
+    "synchronize",
+    # ROCm
+    "rocm_is_available",
+    "rocm_device_count",
+    "rocm_get_device",
+    "rocm_get_device_info",
+    "rocm_set_device",
+    "rocm_synchronize",
     # CSL
     "CodeGenOptions",
     "CodeGenResult",

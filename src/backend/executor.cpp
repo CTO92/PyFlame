@@ -4,6 +4,11 @@
 #include "pyflame/core/allocator.hpp"
 #include "pyflame/backend/csl_codegen.hpp"
 
+#ifdef PYFLAME_HAS_ROCM
+#include "pyflame/backend/rocm/rocm_backend.hpp"
+#include "pyflame/backend/rocm/rocm_executor.hpp"
+#endif
+
 #include <unordered_map>
 #include <cmath>
 #include <algorithm>
@@ -134,6 +139,9 @@ enum class Backend {
     CPU,        // Reference CPU implementation
     SIMULATOR,  // Cerebras simulator
     HARDWARE,   // Actual Cerebras hardware
+#ifdef PYFLAME_HAS_ROCM
+    ROCM,       // AMD ROCm GPU backend
+#endif
 };
 
 /// Result of graph execution
@@ -164,6 +172,8 @@ class Executor {
 public:
     explicit Executor(ExecutorConfig config = {}) : config_(config) {}
 
+    ~Executor() = default;
+
     /// Execute a computation graph
     ExecutionResult execute(
         ir::Graph& graph,
@@ -175,12 +185,21 @@ public:
             case Backend::SIMULATOR:
             case Backend::HARDWARE:
                 return execute_csl(graph, output_ids);
+#ifdef PYFLAME_HAS_ROCM
+            case Backend::ROCM:
+                return execute_rocm(graph, output_ids);
+#endif
         }
         return ExecutionResult{false, "Unknown backend"};
     }
 
 private:
     ExecutorConfig config_;
+
+#ifdef PYFLAME_HAS_ROCM
+    // Lazy-initialized ROCm executor
+    std::unique_ptr<rocm::ROCmExecutor> rocm_executor_;
+#endif
 
     // CPU reference execution
     ExecutionResult execute_cpu(
@@ -534,6 +553,33 @@ private:
         result.error_message = "CSL execution requires Cerebras SDK (not available)";
         return result;
     }
+
+#ifdef PYFLAME_HAS_ROCM
+    // ROCm backend execution
+    ExecutionResult execute_rocm(
+        ir::Graph& graph,
+        const std::vector<ir::NodeId>& output_ids
+    ) {
+        // Check if ROCm is available
+        if (!rocm::is_available()) {
+            ExecutionResult result;
+            result.success = false;
+            result.error_message =
+                "ROCm backend requested but no compatible AMD GPU found. "
+                "Use Backend::CPU instead.";
+            return result;
+        }
+
+        // Lazy initialization of ROCm executor
+        if (!rocm_executor_) {
+            rocm::ROCmExecutor::Config rocm_config;
+            rocm_config.enable_profiling = config_.enable_profiling;
+            rocm_executor_ = std::make_unique<rocm::ROCmExecutor>(rocm_config);
+        }
+
+        return rocm_executor_->execute(graph, output_ids);
+    }
+#endif
 };
 
 }  // namespace pyflame::backend

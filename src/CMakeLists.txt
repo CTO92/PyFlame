@@ -43,6 +43,24 @@ set(PYFLAME_OPTIM_SOURCES
     optim/lr_scheduler.cpp
 )
 
+# ROCm backend sources (conditional)
+if(PYFLAME_USE_ROCM)
+    # C++ sources for ROCm backend
+    set(PYFLAME_ROCM_SOURCES
+        backend/rocm/rocm_device.cpp
+        backend/rocm/rocm_memory.cpp
+        backend/rocm/rocm_blas.cpp
+        backend/rocm/rocm_dnn.cpp
+        backend/rocm/rocm_executor.cpp
+        backend/rocm/rocm_perf.cpp
+    )
+
+    # HIP kernel sources (compiled with HIP compiler)
+    set(PYFLAME_HIP_SOURCES
+        backend/rocm/rocm_kernels.hip
+    )
+endif()
+
 # Core library
 add_library(pyflame_core STATIC
     ${PYFLAME_CORE_SOURCES}
@@ -51,7 +69,16 @@ add_library(pyflame_core STATIC
     ${PYFLAME_AUTOGRAD_SOURCES}
     ${PYFLAME_NN_SOURCES}
     ${PYFLAME_OPTIM_SOURCES}
+    ${PYFLAME_ROCM_SOURCES}  # Will be empty if ROCm disabled
+    ${PYFLAME_HIP_SOURCES}   # HIP kernels (will be empty if ROCm disabled)
 )
+
+# Set HIP source file properties (language detection)
+if(PYFLAME_USE_ROCM)
+    set_source_files_properties(${PYFLAME_HIP_SOURCES}
+        PROPERTIES LANGUAGE HIP
+    )
+endif()
 
 target_include_directories(pyflame_core
     PUBLIC
@@ -62,6 +89,21 @@ target_include_directories(pyflame_core
 )
 
 target_compile_features(pyflame_core PUBLIC cxx_std_17)
+
+# ROCm library linking (conditional)
+if(PYFLAME_USE_ROCM)
+    target_link_libraries(pyflame_core
+        PRIVATE
+        hip::device
+        roc::rocblas
+        MIOpen
+    )
+
+    target_include_directories(pyflame_core
+        PRIVATE
+        ${ROCM_PATH}/include
+    )
+endif()
 
 set_target_properties(pyflame_core PROPERTIES
     POSITION_INDEPENDENT_CODE ON

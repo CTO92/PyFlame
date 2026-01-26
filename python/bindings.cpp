@@ -14,6 +14,10 @@
 #include "pyflame/ir/node.hpp"
 #include "pyflame/backend/csl_codegen.hpp"
 
+#ifdef PYFLAME_HAS_ROCM
+#include "pyflame/backend/rocm/rocm_backend.hpp"
+#endif
+
 namespace py = pybind11;
 using namespace pyflame;
 
@@ -417,6 +421,46 @@ PYBIND11_MODULE(_pyflame_cpp, m) {
     // Phase 2: Neural Network Bindings
     // ========================================================================
     init_nn_bindings(m);
+
+    // ========================================================================
+    // ROCm Backend Bindings
+    // ========================================================================
+
+    // ROCm availability check (always available, returns false if not compiled with ROCm)
+    m.def("rocm_is_available", []() {
+#ifdef PYFLAME_HAS_ROCM
+        return backend::rocm::is_available();
+#else
+        return false;
+#endif
+    }, "Check if ROCm GPU backend is available");
+
+#ifdef PYFLAME_HAS_ROCM
+    // ROCm device management functions
+    m.def("rocm_device_count", &backend::rocm::get_device_count,
+          "Get number of ROCm GPU devices");
+
+    m.def("rocm_get_device_info", [](int device_id) {
+        auto info = backend::rocm::get_device_info(device_id);
+        py::dict result;
+        result["device_id"] = info.device_id;
+        result["name"] = info.name;
+        result["architecture"] = info.architecture;
+        result["total_memory"] = info.total_memory;
+        result["free_memory"] = info.free_memory;
+        result["compute_units"] = info.compute_units;
+        return result;
+    }, py::arg("device_id") = 0, "Get ROCm device information");
+
+    m.def("rocm_set_device", &backend::rocm::set_device,
+          py::arg("device_id"), "Set current ROCm device");
+
+    m.def("rocm_get_device", &backend::rocm::get_device,
+          "Get current ROCm device ID");
+
+    m.def("rocm_synchronize", &backend::rocm::synchronize,
+          "Synchronize current ROCm device");
+#endif
 
     // ========================================================================
     // Version info

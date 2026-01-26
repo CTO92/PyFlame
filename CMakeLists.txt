@@ -28,6 +28,7 @@ option(PYFLAME_BUILD_PYTHON "Build Python bindings" ON)
 option(PYFLAME_BUILD_TESTS "Build unit tests" ON)
 option(PYFLAME_BUILD_EXAMPLES "Build example programs" ON)
 option(PYFLAME_USE_CEREBRAS_SDK "Enable Cerebras SDK integration" OFF)
+option(PYFLAME_USE_ROCM "Enable AMD ROCm GPU backend" OFF)
 option(PYFLAME_ENABLE_SANITIZERS "Enable address/undefined sanitizers" OFF)
 
 # ============================================================================
@@ -49,6 +50,69 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
         "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
+endif()
+
+# ============================================================================
+# ROCm Configuration (optional)
+# ============================================================================
+
+if(PYFLAME_USE_ROCM)
+    # Require CMake 3.21 for HIP language support
+    if(CMAKE_VERSION VERSION_LESS 3.21)
+        message(FATAL_ERROR "ROCm support requires CMake 3.21 or later")
+    endif()
+
+    message(STATUS "ROCm backend enabled")
+
+    # Find ROCm installation path
+    if(NOT DEFINED ROCM_PATH)
+        if(DEFINED ENV{ROCM_PATH})
+            set(ROCM_PATH $ENV{ROCM_PATH})
+        else()
+            set(ROCM_PATH "/opt/rocm")
+        endif()
+    endif()
+
+    if(NOT EXISTS ${ROCM_PATH})
+        message(FATAL_ERROR "ROCm not found at ${ROCM_PATH}. "
+                "Set ROCM_PATH environment variable or -DROCM_PATH=...")
+    endif()
+
+    message(STATUS "ROCm path: ${ROCM_PATH}")
+
+    # Add to CMake search path
+    list(APPEND CMAKE_PREFIX_PATH
+        "${ROCM_PATH}/hip"
+        "${ROCM_PATH}"
+        "${ROCM_PATH}/lib/cmake"
+    )
+
+    # Find required packages
+    find_package(hip REQUIRED)
+    message(STATUS "HIP found: ${hip_VERSION}")
+
+    find_package(rocblas REQUIRED)
+    message(STATUS "rocBLAS found: ${rocblas_VERSION}")
+
+    find_package(miopen REQUIRED)
+    message(STATUS "MIOpen found: ${miopen_VERSION}")
+
+    # Enable HIP language
+    enable_language(HIP)
+    set(CMAKE_HIP_STANDARD 17)
+    set(CMAKE_HIP_STANDARD_REQUIRED ON)
+
+    # GPU architecture targets
+    set(GPU_TARGETS "" CACHE STRING "Target GPU architectures (semicolon-separated)")
+    if(NOT GPU_TARGETS)
+        set(GPU_TARGETS "gfx906;gfx908;gfx90a;gfx1030;gfx1100")
+        message(STATUS "GPU_TARGETS not set, using defaults: ${GPU_TARGETS}")
+    endif()
+    set(CMAKE_HIP_ARCHITECTURES ${GPU_TARGETS})
+    message(STATUS "Building for GPU architectures: ${CMAKE_HIP_ARCHITECTURES}")
+
+    # Add compile definition
+    add_compile_definitions(PYFLAME_HAS_ROCM)
 endif()
 
 # ============================================================================
@@ -169,6 +233,7 @@ message(STATUS "  Build Python:      ${PYFLAME_BUILD_PYTHON}")
 message(STATUS "  Build tests:       ${PYFLAME_BUILD_TESTS}")
 message(STATUS "  Build examples:    ${PYFLAME_BUILD_EXAMPLES}")
 message(STATUS "  Cerebras SDK:      ${PYFLAME_USE_CEREBRAS_SDK}")
+message(STATUS "  ROCm backend:      ${PYFLAME_USE_ROCM}")
 message(STATUS "")
 message(STATUS "WARNING: This is pre-release alpha software. APIs may change.")
 message(STATUS "")
