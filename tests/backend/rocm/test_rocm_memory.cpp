@@ -172,7 +172,7 @@ TEST_F(ROCmMemoryTest, MemoryStats) {
     auto stats_after = memory_manager_->get_stats();
 
     // Allocated bytes should increase
-    EXPECT_GE(stats_after.current_allocated, stats_before.current_allocated + size);
+    EXPECT_GE(stats_after.total_allocated, stats_before.total_allocated + size);
 
     memory_manager_->deallocate(ptr);
 }

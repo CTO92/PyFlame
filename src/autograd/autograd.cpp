@@ -239,7 +239,7 @@ void GradientRegistry::register_all_gradients() {
     // Softmax: complex gradient, see Phase 2 doc
     register_gradient(OpType::SOFTMAX, [](auto grad_out, auto inputs, auto output, auto graph) {
         // grad = y * (grad_out - sum(grad_out * y, dim))
-        int dim = output->get_attr<int>("dim", -1);
+        int dim = output->template get_attr<int>("dim", -1);
 
         // Normalize negative dimension
         int ndim = static_cast<int>(grad_out->shape().size());
@@ -250,7 +250,8 @@ void GradientRegistry::register_all_gradients() {
 
         // Sum along the softmax dimension (use normalized dim)
         auto gy_sum = graph->create_op(OpType::SUM, {gy},
-            ir::infer_reduction_shape(gy->shape(), dim, true));
+            ir::TensorSpec(ir::infer_reduction_shape(gy->shape(), dim, true),
+                          gy->dtype(), gy->layout()));
         gy_sum->set_attr("dim", dim);
         gy_sum->set_attr("keepdim", true);
 
@@ -282,7 +283,7 @@ void GradientRegistry::register_all_gradients() {
         auto input_shape = inputs[0]->shape();
 
         // Compute number of elements in reduction
-        int dim = output->get_attr<int>("dim", -1);
+        int dim = output->template get_attr<int>("dim", -1);
         int ndim = static_cast<int>(input_shape.size());
 
         // Normalize negative dimension
@@ -354,8 +355,8 @@ void GradientRegistry::register_all_gradients() {
 
     // Transpose: just transpose the gradient back
     register_gradient(OpType::TRANSPOSE, [](auto grad_out, auto inputs, auto output, auto graph) {
-        int dim0 = output->get_attr<int>("dim0");
-        int dim1 = output->get_attr<int>("dim1");
+        int dim0 = output->template get_attr<int>("dim0");
+        int dim1 = output->template get_attr<int>("dim1");
 
         auto grad = graph->create_op(OpType::TRANSPOSE, {grad_out},
             ir::TensorSpec(inputs[0]->shape(), grad_out->dtype(), grad_out->layout()));
@@ -591,7 +592,8 @@ std::shared_ptr<ir::Node> sum_grad_for_broadcast(
     // Sum over leading dimensions if they were added
     for (int i = 0; i < ndim_diff; ++i) {
         result = graph->create_op(ir::OpType::SUM, {result},
-            ir::infer_reduction_shape(result->shape(), 0, false));
+            ir::TensorSpec(ir::infer_reduction_shape(result->shape(), 0, false),
+                          result->dtype(), result->layout()));
         result->set_attr("dim", 0);
         result->set_attr("keepdim", false);
     }
@@ -601,7 +603,8 @@ std::shared_ptr<ir::Node> sum_grad_for_broadcast(
     for (int i = static_cast<int>(input_shape.size()) - 1; i >= 0; --i) {
         if (input_shape[i] == 1 && res_shape[i] != 1) {
             result = graph->create_op(ir::OpType::SUM, {result},
-                ir::infer_reduction_shape(result->shape(), i, true));
+                ir::TensorSpec(ir::infer_reduction_shape(result->shape(), i, true),
+                              result->dtype(), result->layout()));
             result->set_attr("dim", i);
             result->set_attr("keepdim", true);
         }

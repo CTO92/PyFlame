@@ -413,8 +413,9 @@ void ROCmDNN::softmax_forward(
 
     float alpha = 1.0f, beta = 0.0f;
 
+    // ROCm 6.x uses uppercase enum constants
     miopenSoftmaxAlgorithm_t algo = log_softmax ?
-        miopenSoftmaxLog : miopenSoftmaxAccurate;
+        MIOPEN_SOFTMAX_LOG : MIOPEN_SOFTMAX_ACCURATE;
 
     // MIOpen softmax operates on channel dimension for NCHW
     MIOPEN_CHECK(miopenSoftmaxForward_V2(
@@ -424,7 +425,7 @@ void ROCmDNN::softmax_forward(
         &beta,
         desc, output,
         algo,
-        miopenSoftmaxModeChannel
+        MIOPEN_SOFTMAX_MODE_CHANNEL
     ));
 
     miopenDestroyTensorDescriptor(desc);

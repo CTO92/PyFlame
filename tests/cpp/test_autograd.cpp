@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 #include "pyflame/core/tensor.hpp"
+#include "pyflame/ir/graph.hpp"
 #include "pyflame/autograd/grad_mode.hpp"
 #include "pyflame/autograd/autograd.hpp"
 #include <cmath>

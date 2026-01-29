@@ -10,6 +10,7 @@
 #include <functional>
 #include <string>
 #include <fstream>
+#include <optional>
 
 namespace pyflame::backend::rocm {
 
@@ -80,9 +81,12 @@ public:
         bool enable_persistence = false;       ///< Persist cache to disk
         std::string cache_file;                ///< Path to cache file
         int search_iterations = 100;           ///< Iterations for timing during search
+
+        Config() = default;
     };
 
-    explicit MIOpenTuningCache(Config config = {});
+    MIOpenTuningCache();
+    explicit MIOpenTuningCache(const Config& config);
     ~MIOpenTuningCache();
 
     /// Enable/disable exhaustive algorithm search
@@ -181,9 +185,12 @@ public:
         size_t initial_pool_size_mb = 64;   ///< Initial pool size
         size_t max_pool_size_mb = 512;      ///< Maximum pool size
         size_t min_allocation = 4096;       ///< Minimum allocation size
+
+        Config() = default;
     };
 
-    explicit PinnedMemoryPool(Config config = {});
+    PinnedMemoryPool();
+    explicit PinnedMemoryPool(const Config& config);
     ~PinnedMemoryPool();
 
     // Disable copy

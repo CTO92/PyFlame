@@ -18,7 +18,9 @@ namespace {
     std::atomic<size_t> g_total_pooled_size{0};
 }
 
-ROCmMemoryManager::ROCmMemoryManager(Config config) : config_(config) {}
+ROCmMemoryManager::ROCmMemoryManager() : config_() {}
+
+ROCmMemoryManager::ROCmMemoryManager(const Config& config) : config_(config) {}
 
 ROCmMemoryManager::~ROCmMemoryManager() {
     clear_pool();

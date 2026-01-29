@@ -28,7 +28,9 @@ struct ExecutionResult {
 
 namespace rocm {
 
-ROCmExecutor::ROCmExecutor(Config config) : config_(config) {
+ROCmExecutor::ROCmExecutor() : ROCmExecutor(Config{}) {}
+
+ROCmExecutor::ROCmExecutor(const Config& config) : config_(config) {
     // Set device
     HIP_CHECK(hipSetDevice(config_.device_id));
 
@@ -291,7 +293,7 @@ void ROCmExecutor::execute_matmul(
 
     auto a_shape = inputs[0]->shape();
     auto b_shape = inputs[1]->shape();
-    auto dtype = node->output_spec().dtype();
+    auto dtype = node->output_spec().dtype;
 
     if (node->op_type() == ir::OpType::MATMUL && a_shape.size() == 2) {
         // Simple 2D GEMM: C = A @ B
@@ -351,7 +353,7 @@ void ROCmExecutor::execute_conv2d(
     auto input_shape = inputs[0]->shape();
     auto weight_shape = inputs[1]->shape();
     auto output_shape = node->shape();
-    auto dtype = node->output_spec().dtype();
+    auto dtype = node->output_spec().dtype;
 
     // Get convolution parameters from node attributes
     int pad_h = node->get_attr<int>("padding_h", 0);
@@ -402,7 +404,7 @@ void ROCmExecutor::execute_pooling(
 
     auto input_shape = inputs[0]->shape();
     auto output_shape = node->shape();
-    auto dtype = node->output_spec().dtype();
+    auto dtype = node->output_spec().dtype;
     auto op = node->op_type();
 
     // Get pooling parameters
@@ -435,7 +437,7 @@ void ROCmExecutor::execute_batchnorm(
 
     auto input = gpu_data.at(inputs[0]->id());
     auto input_shape = inputs[0]->shape();
-    auto dtype = node->output_spec().dtype();
+    auto dtype = node->output_spec().dtype;
 
     auto scale = gpu_data.at(inputs[1]->id());      // gamma
     auto bias = gpu_data.at(inputs[2]->id());       // beta
@@ -485,7 +487,7 @@ void ROCmExecutor::execute_activation(
 
     auto input = gpu_data.at(inputs[0]->id());
     auto op = node->op_type();
-    auto dtype = node->output_spec().dtype();
+    auto dtype = node->output_spec().dtype;
     auto shape = node->shape();
     int64_t numel = node->numel();
 
@@ -519,7 +521,7 @@ void ROCmExecutor::execute_softmax(
     }
 
     auto input = gpu_data.at(inputs[0]->id());
-    auto dtype = node->output_spec().dtype();
+    auto dtype = node->output_spec().dtype;
     auto shape = node->shape();
     auto op = node->op_type();
 
@@ -543,7 +545,7 @@ void ROCmExecutor::execute_reduction(
 
     auto input = gpu_data.at(inputs[0]->id());
     auto op = node->op_type();
-    auto dtype = node->output_spec().dtype();
+    auto dtype = node->output_spec().dtype;
     auto input_shape = inputs[0]->shape();
     auto output_shape = node->shape();
 
@@ -737,7 +739,7 @@ void ROCmExecutor::execute_shape_op(
                 int64_t M = shape[0];
                 int64_t N = shape[1];
                 blas_->geam(
-                    node->output_spec().dtype(),
+                    node->output_spec().dtype,
                     TransposeOp::Transpose,
                     TransposeOp::None,
                     N, M,  // output is N x M

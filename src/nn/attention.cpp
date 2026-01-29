@@ -1,4 +1,7 @@
 #include "pyflame/nn/attention.hpp"
+#include "pyflame/ir/node.hpp"
+#include "pyflame/ir/graph.hpp"
+#include "pyflame/core/tensor_impl.hpp"
 
 #include <cmath>
 #include <sstream>

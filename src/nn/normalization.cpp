@@ -1,5 +1,8 @@
 #include "pyflame/nn/normalization.hpp"
 #include "pyflame/ir/op_type.hpp"
+#include "pyflame/ir/node.hpp"
+#include "pyflame/ir/graph.hpp"
+#include "pyflame/core/tensor_impl.hpp"
 
 #include <sstream>
 #include <stdexcept>
@@ -86,7 +89,7 @@ Tensor BatchNorm2d::forward(const Tensor& input) {
     bn_node->set_attr("track_running_stats", track_running_stats_);
 
     auto impl = TensorImpl::from_node(graph, bn_node);
-    return Tensor(impl);
+    return Tensor::from_impl(impl);
 }
 
 std::string BatchNorm2d::to_string() const {
@@ -178,7 +181,7 @@ Tensor BatchNorm1d::forward(const Tensor& input) {
     bn_node->set_attr("track_running_stats", track_running_stats_);
 
     auto impl = TensorImpl::from_node(graph, bn_node);
-    return Tensor(impl);
+    return Tensor::from_impl(impl);
 }
 
 std::string BatchNorm1d::to_string() const {
@@ -248,7 +251,7 @@ Tensor LayerNorm::forward(const Tensor& input) {
     ln_node->set_attr("elementwise_affine", elementwise_affine_);
 
     auto impl = TensorImpl::from_node(graph, ln_node);
-    return Tensor(impl);
+    return Tensor::from_impl(impl);
 }
 
 std::string LayerNorm::to_string() const {
@@ -319,7 +322,7 @@ Tensor GroupNorm::forward(const Tensor& input) {
     gn_node->set_attr("affine", affine_);
 
     auto impl = TensorImpl::from_node(graph, gn_node);
-    return Tensor(impl);
+    return Tensor::from_impl(impl);
 }
 
 std::string GroupNorm::to_string() const {

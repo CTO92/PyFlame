@@ -61,7 +61,37 @@ if(PYFLAME_USE_ROCM)
     )
 endif()
 
-# Core library
+# ROCm HIP kernels as separate library to avoid -x hip propagation
+if(PYFLAME_USE_ROCM AND PYFLAME_HIP_SOURCES)
+    add_library(pyflame_hip_kernels STATIC
+        ${PYFLAME_HIP_SOURCES}
+    )
+
+    set_source_files_properties(${PYFLAME_HIP_SOURCES}
+        PROPERTIES LANGUAGE HIP
+    )
+
+    target_include_directories(pyflame_hip_kernels
+        PUBLIC
+            $<BUILD_INTERFACE:${PYFLAME_INCLUDE_DIR}>
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}
+            ${ROCM_PATH}/include
+    )
+
+    target_link_libraries(pyflame_hip_kernels
+        PRIVATE
+        hip::device
+    )
+
+    set_target_properties(pyflame_hip_kernels PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        HIP_STANDARD 17
+        HIP_STANDARD_REQUIRED ON
+    )
+endif()
+
+# Core library (C++ only, no HIP sources)
 add_library(pyflame_core STATIC
     ${PYFLAME_CORE_SOURCES}
     ${PYFLAME_OPS_SOURCES}
@@ -70,15 +100,7 @@ add_library(pyflame_core STATIC
     ${PYFLAME_NN_SOURCES}
     ${PYFLAME_OPTIM_SOURCES}
     ${PYFLAME_ROCM_SOURCES}  # Will be empty if ROCm disabled
-    ${PYFLAME_HIP_SOURCES}   # HIP kernels (will be empty if ROCm disabled)
 )
-
-# Set HIP source file properties (language detection)
-if(PYFLAME_USE_ROCM)
-    set_source_files_properties(${PYFLAME_HIP_SOURCES}
-        PROPERTIES LANGUAGE HIP
-    )
-endif()
 
 target_include_directories(pyflame_core
     PUBLIC
@@ -92,9 +114,18 @@ target_compile_features(pyflame_core PUBLIC cxx_std_17)
 
 # ROCm library linking (conditional)
 if(PYFLAME_USE_ROCM)
+    # Link HIP kernels library
+    if(TARGET pyflame_hip_kernels)
+        target_link_libraries(pyflame_core
+            PRIVATE
+            pyflame_hip_kernels
+        )
+    endif()
+
+    # Link ROCm libraries (use hip::host to avoid -x hip propagation)
     target_link_libraries(pyflame_core
         PRIVATE
-        hip::device
+        hip::host
         roc::rocblas
         MIOpen
     )
@@ -116,7 +147,13 @@ add_library(PyFlame::Core ALIAS pyflame_core)
 # Installation
 include(GNUInstallDirs)
 
-install(TARGETS pyflame_core
+# Collect targets to install
+set(PYFLAME_INSTALL_TARGETS pyflame_core)
+if(TARGET pyflame_hip_kernels)
+    list(APPEND PYFLAME_INSTALL_TARGETS pyflame_hip_kernels)
+endif()
+
+install(TARGETS ${PYFLAME_INSTALL_TARGETS}
     EXPORT PyFlameTargets
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}

@@ -62,6 +62,7 @@ enum class OpType : uint16_t {
     AVG_POOL2D = 524,
     AVG_POOL3D = 525,
     ADAPTIVE_AVG_POOL2D = 526,
+    ADAPTIVE_AVG_POOL1D = 527,
 
     // Normalization operations (Phase 2)
     BATCH_NORM = 530,
@@ -166,6 +167,7 @@ inline std::string op_type_name(OpType op) {
         case OpType::AVG_POOL2D: return "avg_pool2d";
         case OpType::AVG_POOL3D: return "avg_pool3d";
         case OpType::ADAPTIVE_AVG_POOL2D: return "adaptive_avg_pool2d";
+        case OpType::ADAPTIVE_AVG_POOL1D: return "adaptive_avg_pool1d";
         case OpType::BATCH_NORM: return "batch_norm";
         case OpType::LAYER_NORM: return "layer_norm";
         case OpType::GROUP_NORM: return "group_norm";

@@ -1,5 +1,8 @@
 #include "pyflame/nn/pooling.hpp"
 #include "pyflame/ir/op_type.hpp"
+#include "pyflame/ir/node.hpp"
+#include "pyflame/ir/graph.hpp"
+#include "pyflame/core/tensor_impl.hpp"
 
 #include <sstream>
 #include <stdexcept>
@@ -56,7 +59,7 @@ Tensor MaxPool2d::forward(const Tensor& input) {
     pool_node->set_attr("padding", std::vector<int64_t>{padding_[0], padding_[1]});
 
     auto impl = TensorImpl::from_node(graph, pool_node);
-    return Tensor(impl);
+    return Tensor::from_impl(impl);
 }
 
 std::string MaxPool2d::to_string() const {
@@ -115,7 +118,7 @@ Tensor AvgPool2d::forward(const Tensor& input) {
     pool_node->set_attr("padding", std::vector<int64_t>{padding_[0], padding_[1]});
 
     auto impl = TensorImpl::from_node(graph, pool_node);
-    return Tensor(impl);
+    return Tensor::from_impl(impl);
 }
 
 std::string AvgPool2d::to_string() const {
@@ -161,7 +164,7 @@ Tensor AdaptiveAvgPool2d::forward(const Tensor& input) {
     pool_node->set_attr("output_size", std::vector<int64_t>{output_size_[0], output_size_[1]});
 
     auto impl = TensorImpl::from_node(graph, pool_node);
-    return Tensor(impl);
+    return Tensor::from_impl(impl);
 }
 
 std::string AdaptiveAvgPool2d::to_string() const {
@@ -203,7 +206,7 @@ Tensor MaxPool1d::forward(const Tensor& input) {
     pool_node->set_attr("padding", padding_);
 
     auto impl = TensorImpl::from_node(graph, pool_node);
-    return Tensor(impl);
+    return Tensor::from_impl(impl);
 }
 
 std::string MaxPool1d::to_string() const {
@@ -250,7 +253,7 @@ Tensor AvgPool1d::forward(const Tensor& input) {
     pool_node->set_attr("padding", padding_);
 
     auto impl = TensorImpl::from_node(graph, pool_node);
-    return Tensor(impl);
+    return Tensor::from_impl(impl);
 }
 
 std::string AvgPool1d::to_string() const {
@@ -291,7 +294,7 @@ Tensor AdaptiveAvgPool1d::forward(const Tensor& input) {
     pool_node->set_attr("output_size", std::vector<int64_t>{output_size_});
 
     auto impl = TensorImpl::from_node(graph, pool_node);
-    return Tensor(impl);
+    return Tensor::from_impl(impl);
 }
 
 std::string AdaptiveAvgPool1d::to_string() const {
@@ -322,7 +325,7 @@ Tensor GlobalAvgPool2d::forward(const Tensor& input) {
     pool_node->set_attr("output_size", std::vector<int64_t>{1, 1});
 
     auto impl = TensorImpl::from_node(graph, pool_node);
-    return Tensor(impl);
+    return Tensor::from_impl(impl);
 }
 
 }  // namespace pyflame::nn

@@ -267,7 +267,7 @@ void TensorImpl::execute_cpu() {
 
         case ir::OpType::SOFTMAX: {
             if (input_data[0]) {
-                const auto& shape = inputs[0]->output_spec().shape();
+                const auto& shape = inputs[0]->output_spec().shape;
                 int ndim = static_cast<int>(shape.size());
                 int dim = node_->get_attr<int>("dim", -1);
                 if (dim < 0) dim += ndim;
@@ -310,7 +310,7 @@ void TensorImpl::execute_cpu() {
 
         case ir::OpType::LOG_SOFTMAX: {
             if (input_data[0]) {
-                const auto& shape = inputs[0]->output_spec().shape();
+                const auto& shape = inputs[0]->output_spec().shape;
                 int ndim = static_cast<int>(shape.size());
                 int dim = node_->get_attr<int>("dim", -1);
                 if (dim < 0) dim += ndim;
@@ -356,7 +356,7 @@ void TensorImpl::execute_cpu() {
             // Input 0: logits (N, C) or (N, C, ...) - predictions
             // Input 1: targets (N,) or (N, ...) - class indices
             if (input_data[0] && input_data[1]) {
-                const auto& logits_shape = inputs[0]->output_spec().shape();
+                const auto& logits_shape = inputs[0]->output_spec().shape;
                 int64_t batch_size = logits_shape[0];
                 int64_t num_classes = logits_shape[1];
 
@@ -412,7 +412,7 @@ void TensorImpl::execute_cpu() {
 
         case ir::OpType::SLICE: {
             if (input_data[0]) {
-                const auto& input_shape = inputs[0]->output_spec().shape();
+                const auto& input_shape = inputs[0]->output_spec().shape;
                 int ndim = static_cast<int>(input_shape.size());
 
                 int dim = node_->get_attr<int>("dim", 0);
@@ -427,7 +427,7 @@ void TensorImpl::execute_cpu() {
                 }
 
                 // Calculate strides for output tensor
-                const auto& output_shape = node_->output_spec().shape();
+                const auto& output_shape = node_->output_spec().shape;
                 std::vector<int64_t> output_strides(ndim);
                 output_strides[ndim - 1] = 1;
                 for (int i = ndim - 2; i >= 0; --i) {

@@ -106,7 +106,7 @@ void validate_graph(const ir::Graph& graph) {
 
                 // Add all input dependencies to stack
                 for (const auto& input : current_node->inputs()) {
-                    ir::NodeId input_id = input.node_id;
+                    ir::NodeId input_id = input->id();
 
                     if (visit_state[input_id] == 1) {
                         // Found a node we're currently visiting - cycle!

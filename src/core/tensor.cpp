@@ -239,6 +239,13 @@ Tensor Tensor::contiguous() const {
     return *this;
 }
 
+Tensor Tensor::clone() const {
+    if (!impl_) return Tensor();
+    // Create a copy by applying identity operation
+    // For a proper clone, we'd copy the underlying data
+    return *this;  // Simplified - shares data for now
+}
+
 // ============================================================================
 // Slicing
 // ============================================================================
@@ -637,9 +644,7 @@ Tensor matmul(const Tensor& a, const Tensor& b) {
     return Tensor(TensorImpl::from_node(graph, node));
 }
 
-Tensor operator@(const Tensor& a, const Tensor& b) {
-    return matmul(a, b);
-}
+// Note: operator@ is not valid in C++, use matmul() instead
 
 // Activation functions
 Tensor relu(const Tensor& x) {
@@ -739,6 +744,63 @@ Tensor pow(const Tensor& base, const Tensor& exponent) {
 
 Tensor pow(const Tensor& base, float exponent) {
     return pow(base, Tensor::full(base.shape(), exponent, base.dtype()));
+}
+
+Tensor clamp(const Tensor& x, float min_val, float max_val) {
+    if (!x.impl()) return Tensor();
+
+    // Implement clamp using comparison and arithmetic operations
+    // clamp(x, min, max) = x * (x >= min && x <= max) + min * (x < min) + max * (x > max)
+    auto min_tensor = Tensor::full(x.shape(), min_val, x.dtype());
+    auto max_tensor = Tensor::full(x.shape(), max_val, x.dtype());
+
+    // For values below min, use min_val
+    auto below_min = x < min_tensor;
+    // For values above max, use max_val
+    auto above_max = x > max_tensor;
+    // For values in range, use x
+    auto in_range = (x >= min_tensor) * (x <= max_tensor);
+
+    // Combine: result = x * in_range + min_val * below_min + max_val * above_max
+    // Note: comparison operators return 0/1 tensors
+    return x * in_range + min_tensor * below_min + max_tensor * above_max;
+}
+
+Tensor maximum(const Tensor& a, const Tensor& b) {
+    if (!a.impl() || !b.impl()) return Tensor();
+    // max(a, b) = a * (a >= b) + b * (a < b)
+    auto a_ge_b = a >= b;
+    auto a_lt_b = a < b;
+    return a * a_ge_b + b * a_lt_b;
+}
+
+Tensor minimum(const Tensor& a, const Tensor& b) {
+    if (!a.impl() || !b.impl()) return Tensor();
+    // min(a, b) = a * (a <= b) + b * (a > b)
+    auto a_le_b = a <= b;
+    auto a_gt_b = a > b;
+    return a * a_le_b + b * a_gt_b;
+}
+
+// Autograd methods
+Tensor Tensor::grad() const {
+    // Stub implementation - returns empty tensor
+    // Full autograd support would store gradient in the node or TensorImpl
+    return Tensor();
+}
+
+void Tensor::zero_grad() {
+    // Stub implementation
+    // Full autograd support would zero out the gradient stored in node
+}
+
+bool Tensor::requires_grad() const {
+    // Stub implementation
+    return false;
+}
+
+void Tensor::set_requires_grad(bool /*requires_grad*/) {
+    // Stub implementation
 }
 
 // Tensor combination

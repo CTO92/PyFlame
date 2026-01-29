@@ -74,7 +74,7 @@ void init_nn_bindings(py::module& m) {
         .def("name", &Module::name, "Get module name")
         .def("state_dict", &Module::state_dict, "Get state dictionary")
         .def("load_state_dict", &Module::load_state_dict,
-            py::arg("dict"), "Load state dictionary")
+            py::arg("dict"), py::arg("strict") = true, "Load state dictionary")
         .def("__repr__", &Module::to_string);
 
     // -------------------------------------------------------------------------
@@ -82,10 +82,18 @@ void init_nn_bindings(py::module& m) {
     // -------------------------------------------------------------------------
     py::class_<Sequential, Module, std::shared_ptr<Sequential>>(nn_m, "Sequential")
         .def(py::init<>())
-        .def(py::init<std::vector<std::shared_ptr<Module>>>(), py::arg("modules"))
+        .def(py::init([](std::vector<std::shared_ptr<Module>> modules) {
+            auto seq = std::make_shared<Sequential>();
+            for (auto& m : modules) {
+                seq->add(m);
+            }
+            return seq;
+        }), py::arg("modules"))
         .def("add", &Sequential::add, py::arg("module"), "Add a module")
         .def("__len__", &Sequential::size)
-        .def("__getitem__", &Sequential::at, py::arg("index"));
+        .def("__getitem__", [](const Sequential& self, size_t index) {
+            return self[index];
+        }, py::arg("index"));
 
     // -------------------------------------------------------------------------
     // Linear layer
@@ -98,8 +106,8 @@ void init_nn_bindings(py::module& m) {
             "Linear transformation: y = x @ W^T + b")
         .def_property_readonly("in_features", &Linear::in_features)
         .def_property_readonly("out_features", &Linear::out_features)
-        .def_property_readonly("weight", &Linear::weight)
-        .def_property_readonly("bias", &Linear::bias);
+        .def_property_readonly("weight", static_cast<const Tensor& (Linear::*)() const>(&Linear::weight))
+        .def_property_readonly("bias", static_cast<const Tensor& (Linear::*)() const>(&Linear::bias));
 
     // -------------------------------------------------------------------------
     // Convolution layers
@@ -119,7 +127,7 @@ void init_nn_bindings(py::module& m) {
         .def_property_readonly("in_channels", &Conv2d::in_channels)
         .def_property_readonly("out_channels", &Conv2d::out_channels)
         .def_property_readonly("kernel_size", &Conv2d::kernel_size)
-        .def_property_readonly("weight", &Conv2d::weight);
+        .def_property_readonly("weight", static_cast<const Tensor& (Conv2d::*)() const>(&Conv2d::weight));
 
     py::class_<Conv1d, Module, std::shared_ptr<Conv1d>>(nn_m, "Conv1d")
         .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, bool>(),
@@ -130,9 +138,7 @@ void init_nn_bindings(py::module& m) {
             py::arg("padding") = 0,
             py::arg("dilation") = 1,
             py::arg("groups") = 1,
-            py::arg("bias") = true)
-        .def_property_readonly("in_channels", &Conv1d::in_channels)
-        .def_property_readonly("out_channels", &Conv1d::out_channels);
+            py::arg("bias") = true);
 
     // -------------------------------------------------------------------------
     // Normalization layers
@@ -174,21 +180,25 @@ void init_nn_bindings(py::module& m) {
     // -------------------------------------------------------------------------
     py::class_<MaxPool2d, Module, std::shared_ptr<MaxPool2d>>(nn_m, "MaxPool2d")
         .def(py::init<std::array<int64_t, 2>, std::array<int64_t, 2>,
-                      std::array<int64_t, 2>, std::array<int64_t, 2>, bool>(),
+                      std::array<int64_t, 2>>(),
             py::arg("kernel_size"),
             py::arg("stride") = std::array<int64_t, 2>{0, 0},
-            py::arg("padding") = std::array<int64_t, 2>{0, 0},
-            py::arg("dilation") = std::array<int64_t, 2>{1, 1},
-            py::arg("ceil_mode") = false);
+            py::arg("padding") = std::array<int64_t, 2>{0, 0})
+        .def(py::init<int64_t, int64_t, int64_t>(),
+            py::arg("kernel_size"),
+            py::arg("stride") = 0,
+            py::arg("padding") = 0);
 
     py::class_<AvgPool2d, Module, std::shared_ptr<AvgPool2d>>(nn_m, "AvgPool2d")
         .def(py::init<std::array<int64_t, 2>, std::array<int64_t, 2>,
-                      std::array<int64_t, 2>, bool, bool>(),
+                      std::array<int64_t, 2>>(),
             py::arg("kernel_size"),
             py::arg("stride") = std::array<int64_t, 2>{0, 0},
-            py::arg("padding") = std::array<int64_t, 2>{0, 0},
-            py::arg("ceil_mode") = false,
-            py::arg("count_include_pad") = true);
+            py::arg("padding") = std::array<int64_t, 2>{0, 0})
+        .def(py::init<int64_t, int64_t, int64_t>(),
+            py::arg("kernel_size"),
+            py::arg("stride") = 0,
+            py::arg("padding") = 0);
 
     py::class_<AdaptiveAvgPool2d, Module, std::shared_ptr<AdaptiveAvgPool2d>>(nn_m, "AdaptiveAvgPool2d")
         .def(py::init<std::array<int64_t, 2>>(),
@@ -243,8 +253,9 @@ void init_nn_bindings(py::module& m) {
             py::arg("num_heads"),
             py::arg("dropout") = 0.0f,
             py::arg("bias") = true)
-        .def("forward", &CrossAttention::forward,
-            py::arg("query"), py::arg("context"));
+        .def("forward", [](CrossAttention& self, const Tensor& query, const Tensor& context) {
+            return self.forward(query, context);
+        }, py::arg("query"), py::arg("context"));
 
     // -------------------------------------------------------------------------
     // Loss functions

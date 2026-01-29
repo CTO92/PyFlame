@@ -6,6 +6,8 @@
 #include <set>
 #include <algorithm>
 #include <sstream>
+#include <functional>
+#include <cstring>
 
 #include "pyflame/ir/node.hpp"
 
@@ -112,9 +114,13 @@ public:
 
     // Accessors
     const std::vector<std::shared_ptr<Node>>& all_nodes() const { return all_nodes_; }
+    const std::vector<std::shared_ptr<Node>>& nodes() const { return all_nodes_; }  // Alias for all_nodes()
     const std::vector<std::shared_ptr<Node>>& inputs() const { return inputs_; }
     const std::vector<std::shared_ptr<Node>>& outputs() const { return outputs_; }
     const std::vector<std::shared_ptr<Node>>& parameters() const { return parameters_; }
+
+    /// Get a node by ID (alias for node())
+    std::shared_ptr<Node> get_node(NodeId id) const { return node(id); }
 
     size_t num_nodes() const { return all_nodes_.size(); }
 

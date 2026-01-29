@@ -213,13 +213,8 @@ void ROCmBLAS::dot(
             static_cast<float*>(result)
         ));
     } else if (dtype == DType::Float16) {
-        ROCBLAS_CHECK(rocblas_hdot(
-            handle_,
-            safe_cast_to_rocblas_int(n, "n"),
-            static_cast<const rocblas_half*>(x), safe_cast_to_rocblas_int(incx, "incx"),
-            static_cast<const rocblas_half*>(y), safe_cast_to_rocblas_int(incy, "incy"),
-            static_cast<rocblas_half*>(result)
-        ));
+        // TODO: ROCm 6.x changed half-precision API
+        throw std::runtime_error("Float16 dot not yet supported with ROCm 6.x");
     } else {
         throw std::runtime_error("dot only supports Float32 and Float16. "
                                  "Unsupported dtype: " + dtype_name(dtype));
@@ -244,15 +239,9 @@ void ROCmBLAS::scal(
             static_cast<float*>(x), safe_cast_to_rocblas_int(incx, "incx")
         ));
     } else if (dtype == DType::Float16) {
-        rocblas_half alpha_half;
-        // Convert float to half
-        alpha_half = static_cast<rocblas_half>(alpha);
-        ROCBLAS_CHECK(rocblas_hscal(
-            handle_,
-            safe_cast_to_rocblas_int(n, "n"),
-            &alpha_half,
-            static_cast<rocblas_half*>(x), safe_cast_to_rocblas_int(incx, "incx")
-        ));
+        // TODO: ROCm 6.x changed half-precision API
+        // Need to use rocblas_half_t and proper conversion
+        throw std::runtime_error("Float16 scal not yet supported with ROCm 6.x");
     } else {
         throw std::runtime_error("scal only supports Float32 and Float16. "
                                  "Unsupported dtype: " + dtype_name(dtype));
@@ -280,15 +269,8 @@ void ROCmBLAS::axpy(
             static_cast<float*>(y), safe_cast_to_rocblas_int(incy, "incy")
         ));
     } else if (dtype == DType::Float16) {
-        rocblas_half alpha_half;
-        alpha_half = static_cast<rocblas_half>(alpha);
-        ROCBLAS_CHECK(rocblas_haxpy(
-            handle_,
-            safe_cast_to_rocblas_int(n, "n"),
-            &alpha_half,
-            static_cast<const rocblas_half*>(x), safe_cast_to_rocblas_int(incx, "incx"),
-            static_cast<rocblas_half*>(y), safe_cast_to_rocblas_int(incy, "incy")
-        ));
+        // TODO: ROCm 6.x changed half-precision API
+        throw std::runtime_error("Float16 axpy not yet supported with ROCm 6.x");
     } else {
         throw std::runtime_error("axpy only supports Float32 and Float16. "
                                  "Unsupported dtype: " + dtype_name(dtype));

@@ -141,6 +141,9 @@ public:
     /// Construct from list of modules
     Sequential(std::initializer_list<std::shared_ptr<Module>> modules);
 
+    /// Construct from vector of modules
+    explicit Sequential(const std::vector<std::shared_ptr<Module>>& modules);
+
     /// Add a module
     void add(std::shared_ptr<Module> module);
 

@@ -68,6 +68,43 @@ inline TensorSpec infer_unary_op_spec(
     return input;
 }
 
+/// Compute output shape for reduction operations (helper for autograd)
+inline std::vector<int64_t> infer_reduction_shape(
+    const std::vector<int64_t>& input_shape,
+    std::optional<int> dim,
+    bool keepdim
+) {
+    if (!dim.has_value()) {
+        // Full reduction to scalar
+        if (keepdim) {
+            return std::vector<int64_t>(input_shape.size(), 1);
+        } else {
+            return {};
+        }
+    }
+
+    int d = dim.value();
+    int ndim = static_cast<int>(input_shape.size());
+    if (d < 0) d += ndim;
+
+    if (d < 0 || d >= ndim) {
+        throw std::runtime_error("Reduction dimension out of range");
+    }
+
+    std::vector<int64_t> new_shape;
+    for (size_t i = 0; i < input_shape.size(); ++i) {
+        if (static_cast<int>(i) == d) {
+            if (keepdim) {
+                new_shape.push_back(1);
+            }
+        } else {
+            new_shape.push_back(input_shape[i]);
+        }
+    }
+
+    return new_shape;
+}
+
 /// Infer output spec for reduction operations
 inline TensorSpec infer_reduction_spec(
     const TensorSpec& input,

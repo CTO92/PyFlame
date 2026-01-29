@@ -8,13 +8,14 @@
 #include "pyflame/backend/rocm/rocm_kernels.hpp"
 #include "pyflame/backend/rocm/rocm_memory.hpp"
 #include "pyflame/backend/rocm/rocm_backend.hpp"
-#include "pyflame/ir/ops.hpp"
+#include "pyflame/ir/op_type.hpp"
 #include <hip/hip_runtime.h>
 #include <vector>
 #include <cmath>
 #include <random>
 
 using namespace pyflame::backend::rocm;
+using namespace pyflame::backend::rocm::kernels;
 
 class ROCmKernelsTest : public ::testing::Test {
 protected:

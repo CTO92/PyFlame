@@ -13,6 +13,17 @@ target_include_directories(_pyflame_cpp PRIVATE
     ${PYFLAME_INCLUDE_DIR}
 )
 
+# Add ROCm include paths when enabled
+if(PYFLAME_USE_ROCM AND DEFINED ROCM_PATH)
+    target_include_directories(_pyflame_cpp PRIVATE
+        ${ROCM_PATH}/include
+    )
+    target_compile_definitions(_pyflame_cpp PRIVATE
+        PYFLAME_HAS_ROCM
+        __HIP_PLATFORM_AMD__
+    )
+endif()
+
 # Set output directory to match Python package structure
 set_target_properties(_pyflame_cpp PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/python/pyflame

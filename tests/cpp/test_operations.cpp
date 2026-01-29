@@ -200,7 +200,7 @@ TEST_F(OperationsTest, MatmulOperator) {
 
     auto a = Tensor::from_data(a_vals, {2, 2});
     auto b = Tensor::from_data(b_vals, {2, 2});
-    auto c = a @ b;  // Using @ operator
+    auto c = matmul(a, b);  // Matrix multiplication
 
     c.eval();
     const float* data = c.data<float>();

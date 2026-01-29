@@ -1,4 +1,5 @@
 #include "pyflame/nn/module.hpp"
+#include "pyflame/ir/node.hpp"
 
 #include <sstream>
 
@@ -231,6 +232,12 @@ Tensor& Module::register_buffer(const std::string& name, Tensor buffer) {
 // ============================================================================
 
 Sequential::Sequential(std::initializer_list<std::shared_ptr<Module>> modules) {
+    for (auto& module : modules) {
+        add(module);
+    }
+}
+
+Sequential::Sequential(const std::vector<std::shared_ptr<Module>>& modules) {
     for (auto& module : modules) {
         add(module);
     }

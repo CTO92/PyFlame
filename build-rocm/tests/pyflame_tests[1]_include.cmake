@@ -1,0 +1,5 @@
+if(EXISTS "/home/dannywall/Documents/Code/PyFlame/PyFlame/build-rocm/tests/pyflame_tests[1]_tests.cmake")
+  include("/home/dannywall/Documents/Code/PyFlame/PyFlame/build-rocm/tests/pyflame_tests[1]_tests.cmake")
+else()
+  add_test(pyflame_tests_NOT_BUILT pyflame_tests_NOT_BUILT)
+endif()

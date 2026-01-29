@@ -42,11 +42,16 @@ public:
         bool enable_profiling = false;   ///< Enable timing measurements
         bool sync_after_launch = false;  ///< Sync after each kernel (debug)
         size_t workspace_size_mb = 256;  ///< Workspace size for algorithms
+
+        Config() = default;
     };
+
+    /// Construct executor with default configuration
+    ROCmExecutor();
 
     /// Construct executor with configuration
     /// @param config Executor configuration options
-    explicit ROCmExecutor(Config config = {});
+    explicit ROCmExecutor(const Config& config);
 
     /// Destructor - releases GPU resources
     ~ROCmExecutor();

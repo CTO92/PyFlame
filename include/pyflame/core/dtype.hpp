@@ -16,6 +16,8 @@ enum class DType : uint8_t {
     Int16 = 4,
     Int8 = 5,
     Bool = 6,
+    Float64 = 7,
+    Int64 = 8,
 };
 
 /// Get the size in bytes of a data type
@@ -28,6 +30,8 @@ inline size_t dtype_size(DType dtype) {
         case DType::Int16: return 2;
         case DType::Int8: return 1;
         case DType::Bool: return 1;
+        case DType::Float64: return 8;
+        case DType::Int64: return 8;
         default: throw std::runtime_error("Unknown dtype");
     }
 }
@@ -42,18 +46,22 @@ inline std::string dtype_name(DType dtype) {
         case DType::Int16: return "int16";
         case DType::Int8: return "int8";
         case DType::Bool: return "bool";
+        case DType::Float64: return "float64";
+        case DType::Int64: return "int64";
         default: return "unknown";
     }
 }
 
 /// Check if dtype is a floating point type
 inline bool dtype_is_floating(DType dtype) {
-    return dtype == DType::Float32 || dtype == DType::Float16 || dtype == DType::BFloat16;
+    return dtype == DType::Float32 || dtype == DType::Float16 ||
+           dtype == DType::BFloat16 || dtype == DType::Float64;
 }
 
 /// Check if dtype is an integer type
 inline bool dtype_is_integer(DType dtype) {
-    return dtype == DType::Int32 || dtype == DType::Int16 || dtype == DType::Int8;
+    return dtype == DType::Int32 || dtype == DType::Int16 ||
+           dtype == DType::Int8 || dtype == DType::Int64;
 }
 
 /// Convert dtype to CSL type string
@@ -66,6 +74,8 @@ inline std::string dtype_to_csl(DType dtype) {
         case DType::Int16: return "i16";
         case DType::Int8: return "i8";
         case DType::Bool: return "bool";
+        case DType::Float64: return "f64";
+        case DType::Int64: return "i64";
         default: throw std::runtime_error("Unknown dtype for CSL");
     }
 }

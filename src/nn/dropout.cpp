@@ -1,5 +1,8 @@
 #include "pyflame/nn/dropout.hpp"
 #include "pyflame/ir/op_type.hpp"
+#include "pyflame/ir/node.hpp"
+#include "pyflame/ir/graph.hpp"
+#include "pyflame/core/tensor_impl.hpp"
 
 #include <sstream>
 #include <stdexcept>
@@ -36,7 +39,7 @@ Tensor Dropout::forward(const Tensor& input) {
     dropout_node->set_attr("inplace", inplace_);
 
     auto impl = TensorImpl::from_node(graph, dropout_node);
-    return Tensor(impl);
+    return Tensor::from_impl(impl);
 }
 
 std::string Dropout::to_string() const {
@@ -83,7 +86,7 @@ Tensor Dropout2d::forward(const Tensor& input) {
     dropout_node->set_attr("inplace", inplace_);
 
     auto impl = TensorImpl::from_node(graph, dropout_node);
-    return Tensor(impl);
+    return Tensor::from_impl(impl);
 }
 
 std::string Dropout2d::to_string() const {
@@ -130,7 +133,7 @@ Tensor Dropout1d::forward(const Tensor& input) {
     dropout_node->set_attr("inplace", inplace_);
 
     auto impl = TensorImpl::from_node(graph, dropout_node);
-    return Tensor(impl);
+    return Tensor::from_impl(impl);
 }
 
 std::string Dropout1d::to_string() const {
@@ -174,7 +177,7 @@ Tensor AlphaDropout::forward(const Tensor& input) {
     dropout_node->set_attr("inplace", inplace_);
 
     auto impl = TensorImpl::from_node(graph, dropout_node);
-    return Tensor(impl);
+    return Tensor::from_impl(impl);
 }
 
 std::string AlphaDropout::to_string() const {

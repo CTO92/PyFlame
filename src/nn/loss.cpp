@@ -1,5 +1,8 @@
 #include "pyflame/nn/loss.hpp"
 #include "pyflame/ir/op_type.hpp"
+#include "pyflame/ir/node.hpp"
+#include "pyflame/ir/graph.hpp"
+#include "pyflame/core/tensor_impl.hpp"
 
 #include <cmath>
 #include <sstream>
@@ -115,7 +118,7 @@ Tensor SmoothL1Loss::forward(const Tensor& input, const Tensor& target) {
         {condition_node, quadratic.node(), linear.node()}, out_spec);
 
     auto impl = TensorImpl::from_node(graph, where_node);
-    auto loss = Tensor(impl);
+    auto loss = Tensor::from_impl(impl);
 
     return apply_reduction(loss, reduction_);
 }
@@ -160,7 +163,7 @@ Tensor HuberLoss::forward(const Tensor& input, const Tensor& target) {
         {condition_node, quadratic.node(), linear.node()}, out_spec);
 
     auto impl = TensorImpl::from_node(graph, where_node);
-    auto loss = Tensor(impl);
+    auto loss = Tensor::from_impl(impl);
 
     return apply_reduction(loss, reduction_);
 }
@@ -225,7 +228,7 @@ Tensor BCEWithLogitsLoss::forward(const Tensor& input, const Tensor& target) {
     auto zeros = Tensor::zeros(input.shape());
     auto max_x_0_node = graph->create_op(ir::OpType::MAXIMUM,
         {input.node(), zeros.node()}, out_spec);
-    auto max_x_0 = Tensor(TensorImpl::from_node(graph, max_x_0_node));
+    auto max_x_0 = Tensor::from_impl(TensorImpl::from_node(graph, max_x_0_node));
 
     // -x * t
     auto neg_x_t = -(input * target);
@@ -274,7 +277,7 @@ Tensor NLLLoss::forward(const Tensor& input, const Tensor& target) {
     nll_node->set_attr("ignore_index", ignore_index_);
 
     auto impl = TensorImpl::from_node(graph, nll_node);
-    auto loss = Tensor(impl);
+    auto loss = Tensor::from_impl(impl);
 
     return apply_reduction(loss, reduction_);
 }
@@ -322,7 +325,7 @@ Tensor CrossEntropyLoss::forward(const Tensor& input, const Tensor& target) {
     ce_node->set_attr("label_smoothing", label_smoothing_);
 
     auto impl = TensorImpl::from_node(graph, ce_node);
-    auto loss = Tensor(impl);
+    auto loss = Tensor::from_impl(impl);
 
     return apply_reduction(loss, reduction_);
 }
@@ -411,7 +414,7 @@ Tensor CosineEmbeddingLoss::forward(const Tensor& input1, const Tensor& input2,
     auto zeros = Tensor::zeros(cos_sim.shape());
     auto max_node = graph->create_op(ir::OpType::MAXIMUM,
         {cos_minus_margin.node(), zeros.node()}, out_spec);
-    auto loss_dissimilar = Tensor(TensorImpl::from_node(graph, max_node));
+    auto loss_dissimilar = Tensor::from_impl(TensorImpl::from_node(graph, max_node));
 
     // Select based on target
     // target = 1 -> use loss_similar
@@ -476,7 +479,7 @@ Tensor TripletMarginLoss::forward(const Tensor& anchor, const Tensor& positive,
     auto zeros = Tensor::zeros(triplet_loss.shape());
     auto max_node = graph->create_op(ir::OpType::MAXIMUM,
         {triplet_loss.node(), zeros.node()}, out_spec);
-    auto loss = Tensor(TensorImpl::from_node(graph, max_node));
+    auto loss = Tensor::from_impl(TensorImpl::from_node(graph, max_node));
 
     return apply_reduction(loss, reduction_);
 }

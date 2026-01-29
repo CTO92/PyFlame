@@ -66,7 +66,9 @@ bool validate_cache_path(const std::string& path) {
 // MIOpen Tuning Cache Implementation
 // ============================================================================
 
-MIOpenTuningCache::MIOpenTuningCache(Config config) : config_(config) {
+MIOpenTuningCache::MIOpenTuningCache() : config_() {}
+
+MIOpenTuningCache::MIOpenTuningCache(const Config& config) : config_(config) {
     // SECURITY: Validate cache file path on construction
     if (!config_.cache_file.empty() && !validate_cache_path(config_.cache_file)) {
         throw std::invalid_argument(
@@ -366,7 +368,9 @@ MIOpenTuningCache& get_tuning_cache() {
 // Pinned Memory Pool Implementation
 // ============================================================================
 
-PinnedMemoryPool::PinnedMemoryPool(Config config) : config_(config) {}
+PinnedMemoryPool::PinnedMemoryPool() : config_() {}
+
+PinnedMemoryPool::PinnedMemoryPool(const Config& config) : config_(config) {}
 
 PinnedMemoryPool::~PinnedMemoryPool() {
     clear();
@@ -557,14 +561,15 @@ void execute_fused_matmul(
 
     // First do GEMM: output = A @ B
     blas.gemm(
-        ROCBLAS_OPERATION_NONE,
-        ROCBLAS_OPERATION_NONE,
-        N, M, K,  // rocBLAS uses column-major
+        DType::Float32,
+        TransposeOp::None,
+        TransposeOp::None,
+        M, N, K,
         1.0f,
-        B, N,
-        A, K,
+        A, K,     // A, lda
+        B, N,     // B, ldb
         0.0f,
-        output, N
+        output, N // C, ldc
     );
 
     // Then apply bias and activation
@@ -743,14 +748,15 @@ void warmup_pools(const WarmupConfig& config) {
 
         try {
             blas.gemm(
-                ROCBLAS_OPERATION_NONE,
-                ROCBLAS_OPERATION_NONE,
+                DType::Float32,
+                TransposeOp::None,
+                TransposeOp::None,
                 256, 256, 256,
                 1.0f,
-                static_cast<float*>(B), 256,
-                static_cast<float*>(A), 256,
+                A, 256,
+                B, 256,
                 0.0f,
-                static_cast<float*>(C), 256
+                C, 256
             );
         } catch (const std::exception& e) {
             // SECURITY FIX (LOW-004): Log warning instead of silently ignoring

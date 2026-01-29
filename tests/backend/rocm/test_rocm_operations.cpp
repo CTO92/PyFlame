@@ -10,8 +10,8 @@
 
 #include "pyflame/backend/rocm/rocm_executor.hpp"
 #include "pyflame/backend/rocm/rocm_backend.hpp"
-#include "pyflame/backend/executor.hpp"
 #include "pyflame/ir/graph.hpp"
+#include "pyflame/ir/node.hpp"
 #include "pyflame/core/tensor.hpp"
 #include <cmath>
 #include <random>
@@ -19,6 +19,7 @@
 
 using namespace pyflame;
 using namespace pyflame::backend;
+using namespace pyflame::ir;
 
 class ROCmOperationsTest : public ::testing::Test {
 protected:
@@ -173,7 +174,7 @@ TEST_F(ROCmOperationsTest, BatchedMatmul) {
 
     auto a = graph.create_constant(a_spec, a_data.data(), "A");
     auto b = graph.create_constant(b_spec, b_data.data(), "B");
-    auto c = graph.create_op(ir::OpType::BATCHED_MATMUL, {a, b}, c_spec, "C");
+    auto c = graph.create_op(ir::OpType::BATCH_MATMUL, {a, b}, c_spec, "C");
 
     compare_with_cpu(graph, {c->id()});
 }

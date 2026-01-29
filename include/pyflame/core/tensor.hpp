@@ -82,6 +82,7 @@ public:
     Tensor squeeze(int dim = -1) const;
     Tensor unsqueeze(int dim) const;
     Tensor contiguous() const;
+    Tensor clone() const;  // Create a copy of the tensor
 
     // Slicing
     Tensor slice(int dim, int64_t start, int64_t end) const;
@@ -135,6 +136,15 @@ public:
     std::shared_ptr<ir::Graph> graph() const;
     std::shared_ptr<ir::Node> node() const;
 
+    // Factory method for creating Tensor from TensorImpl (for internal use)
+    static Tensor from_impl(std::shared_ptr<TensorImpl> impl) { return Tensor(impl); }
+
+    // Autograd methods
+    Tensor grad() const;          // Get gradient tensor
+    void zero_grad();             // Zero out gradient
+    bool requires_grad() const;   // Check if gradient is tracked
+    void set_requires_grad(bool requires_grad);  // Enable/disable gradient tracking
+
     // String representation
     std::string to_string() const;
 
@@ -144,11 +154,29 @@ private:
     std::shared_ptr<TensorImpl> impl_;
 
     friend class TensorImpl;
+
+    // Friend declarations for free functions that need private constructor access
+    friend Tensor matmul(const Tensor& a, const Tensor& b);
+    friend Tensor relu(const Tensor& x);
+    friend Tensor sigmoid(const Tensor& x);
+    friend Tensor tanh(const Tensor& x);
+    friend Tensor gelu(const Tensor& x);
+    friend Tensor silu(const Tensor& x);
+    friend Tensor softmax(const Tensor& x, int dim);
+    friend Tensor log_softmax(const Tensor& x, int dim);
+    friend Tensor abs(const Tensor& x);
+    friend Tensor sqrt(const Tensor& x);
+    friend Tensor exp(const Tensor& x);
+    friend Tensor log(const Tensor& x);
+    friend Tensor sin(const Tensor& x);
+    friend Tensor cos(const Tensor& x);
+    friend Tensor pow(const Tensor& base, const Tensor& exponent);
+    friend Tensor cat(const std::vector<Tensor>& tensors, int dim);
 };
 
 // Free function operations
 Tensor matmul(const Tensor& a, const Tensor& b);
-Tensor operator@(const Tensor& a, const Tensor& b);
+// Note: operator@ is not valid in C++, use matmul() instead
 
 // Activation functions
 Tensor relu(const Tensor& x);
@@ -168,6 +196,9 @@ Tensor sin(const Tensor& x);
 Tensor cos(const Tensor& x);
 Tensor pow(const Tensor& base, const Tensor& exponent);
 Tensor pow(const Tensor& base, float exponent);
+Tensor clamp(const Tensor& x, float min_val, float max_val);
+Tensor maximum(const Tensor& a, const Tensor& b);  // Element-wise max
+Tensor minimum(const Tensor& a, const Tensor& b);  // Element-wise min
 
 // Tensor combination
 Tensor cat(const std::vector<Tensor>& tensors, int dim = 0);

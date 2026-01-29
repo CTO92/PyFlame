@@ -45,9 +45,12 @@ public:
         size_t max_pool_size_mb = 4096;   ///< Maximum pool size
         bool use_pinned_host = true;      ///< Use pinned host memory for transfers
         size_t max_allocation_size = 0;   ///< Max single allocation (0 = default 16GB)
+
+        Config() = default;
     };
 
-    explicit ROCmMemoryManager(Config config = {});
+    ROCmMemoryManager();  // Uses default Config
+    explicit ROCmMemoryManager(const Config& config);
     ~ROCmMemoryManager();
 
     // Disable copy

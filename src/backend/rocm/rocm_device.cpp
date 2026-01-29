@@ -38,7 +38,7 @@ DeviceInfo get_device_info(int device_id) {
     HIP_CHECK(hipGetDeviceProperties(&props, device_id));
 
     info.name = props.name;
-    info.architecture = "gfx" + std::to_string(props.gcnArch);
+    info.architecture = props.gcnArchName;  // ROCm 6.x uses gcnArchName string
     info.total_memory = props.totalGlobalMem;
     info.compute_units = props.multiProcessorCount;
     info.max_threads_per_block = props.maxThreadsPerBlock;

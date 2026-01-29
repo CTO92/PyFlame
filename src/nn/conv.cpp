@@ -1,5 +1,8 @@
 #include "pyflame/nn/conv.hpp"
 #include "pyflame/ir/op_type.hpp"
+#include "pyflame/ir/node.hpp"
+#include "pyflame/ir/graph.hpp"
+#include "pyflame/core/tensor_impl.hpp"
 
 #include <cmath>
 #include <sstream>
@@ -115,7 +118,7 @@ Tensor Conv2d::forward(const Tensor& input) {
 
     // Create output tensor from node
     auto impl = TensorImpl::from_node(graph, conv_node);
-    Tensor output(impl);
+    Tensor output = Tensor::from_impl(impl);
 
     // Add bias if present
     if (use_bias_) {
@@ -226,7 +229,7 @@ Tensor Conv1d::forward(const Tensor& input) {
     conv_node->set_attr("groups", groups_);
 
     auto impl = TensorImpl::from_node(graph, conv_node);
-    Tensor output(impl);
+    Tensor output = Tensor::from_impl(impl);
 
     if (use_bias_) {
         auto bias_reshaped = bias_.reshape({1, out_channels_, 1});

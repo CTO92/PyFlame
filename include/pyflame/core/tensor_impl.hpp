@@ -375,6 +375,9 @@ public:
     static void set_current_graph(std::shared_ptr<ir::Graph> graph);
 
 private:
+    /// CPU reference implementation for operations
+    void execute_cpu();
+
     std::shared_ptr<ir::Graph> graph_;
     std::shared_ptr<ir::Node> node_;
     std::shared_ptr<uint8_t> data_;  // Materialized data (may be null)

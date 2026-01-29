@@ -70,11 +70,11 @@ TEST_F(ROCmDeviceTest, SetDevice_InvalidDevice) {
 
 TEST_F(ROCmDeviceTest, GetCurrentDevice) {
     set_device(0);
-    EXPECT_EQ(get_current_device(), 0);
+    EXPECT_EQ(get_device(), 0);
 
     if (get_device_count() > 1) {
         set_device(1);
-        EXPECT_EQ(get_current_device(), 1);
+        EXPECT_EQ(get_device(), 1);
     }
 }
 
