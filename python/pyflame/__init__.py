@@ -13,7 +13,7 @@ featuring lazy evaluation, automatic CSL code generation, and Python-first API.
 _CPP_AVAILABLE = False
 
 try:
-    from ._pyflame_cpp import (  # CSL code generation; Data types; Layout; Tensor class; Graph access; Elementwise math; Tensor combination; Matrix operations; Activation functions
+    from ._pyflame_cpp import (
         CodeGenOptions,
         CodeGenResult,
         CSLCodeGenerator,
@@ -162,7 +162,7 @@ def _require_cpp(func_name: str):
     if not _CPP_AVAILABLE:
         raise RuntimeError(
             f"{func_name}() requires PyFlame C++ bindings. "
-            "Build from source with 'pip install -e .' to enable core tensor operations."
+            "Build from source with 'pip install -e .' to enable."
         )
 
 
@@ -466,11 +466,11 @@ def set_device(device: str) -> None:
 
     Args:
         device: Device specification string:
-            - 'cpu': Use CPU backend
-            - 'cerebras': Use Cerebras hardware
-            - 'cerebras:simulator': Use Cerebras simulator
-            - 'rocm': Use first AMD GPU
-            - 'rocm:0', 'rocm:1', etc.: Use specific AMD GPU
+            - "cpu": Use CPU backend
+            - "cerebras": Use Cerebras hardware
+            - "cerebras:simulator": Use Cerebras simulator
+            - "rocm": Use first AMD GPU
+            - "rocm:0", "rocm:1", etc.: Use specific AMD GPU
 
     Raises:
         ValueError: If device specification is invalid
@@ -478,28 +478,28 @@ def set_device(device: str) -> None:
 
     Example:
         >>> import pyflame as pf
-        >>> pf.set_device('rocm')  # Use AMD GPU
-        >>> pf.set_device('rocm:1')  # Use second AMD GPU
-        >>> pf.set_device('cpu')  # Use CPU
+        >>> pf.set_device("rocm")  # Use AMD GPU
+        >>> pf.set_device("rocm:1")  # Use second AMD GPU
+        >>> pf.set_device("cpu")  # Use CPU
     """
     global _current_backend, _current_device_id
 
     device = device.lower().strip()
 
-    if device == 'cpu':
+    if device == "cpu":
         _current_backend = Backend.CPU
         _current_device_id = 0
         return
 
-    if device.startswith('cerebras'):
-        if ':simulator' in device:
+    if device.startswith("cerebras"):
+        if ":simulator" in device:
             _current_backend = Backend.SIMULATOR
         else:
             _current_backend = Backend.HARDWARE
         _current_device_id = 0
         return
 
-    if device.startswith('rocm'):
+    if device.startswith("rocm"):
         if not rocm_is_available():
             raise RuntimeError(
                 "ROCm backend requested but not available. "
@@ -509,9 +509,9 @@ def set_device(device: str) -> None:
         _current_backend = Backend.ROCM
 
         # Parse device ID if specified
-        if ':' in device:
+        if ":" in device:
             try:
-                device_id = int(device.split(':')[1])
+                device_id = int(device.split(":")[1])
             except ValueError:
                 raise ValueError(f"Invalid ROCm device specification: {device}")
 
@@ -540,22 +540,22 @@ def get_device() -> str:
         Device specification string
 
     Example:
-        >>> pf.set_device('rocm:0')
+        >>> pf.set_device("rocm:0")
         >>> pf.get_device()
-        'rocm:0'
+        "rocm:0"
     """
     global _current_backend, _current_device_id
 
     if _current_backend == Backend.CPU:
-        return 'cpu'
+        return "cpu"
     elif _current_backend == Backend.SIMULATOR:
-        return 'cerebras:simulator'
+        return "cerebras:simulator"
     elif _current_backend == Backend.HARDWARE:
-        return 'cerebras'
+        return "cerebras"
     elif _current_backend == Backend.ROCM:
-        return f'rocm:{_current_device_id}'
+        return f"rocm:{_current_device_id}"
     else:
-        return 'unknown'
+        return "unknown"
 
 
 def device_info() -> dict:
@@ -565,26 +565,27 @@ def device_info() -> dict:
         Dictionary with device information
 
     Example:
-        >>> pf.set_device('rocm')
+        >>> pf.set_device("rocm")
         >>> pf.device_info()
-        {'type': 'rocm', 'name': 'AMD Instinct MI100', 'architecture': 'gfx908', ...}
+        {"type": "rocm", "name": "AMD Instinct MI100", "architecture": "gfx908", ...}
     """
     global _current_backend, _current_device_id
 
     if _current_backend == Backend.CPU:
         import os
         import platform
+
         return {
-            'type': 'cpu',
-            'name': platform.processor() or 'Unknown CPU',
-            'cores': os.cpu_count() or 1,
+            "type": "cpu",
+            "name": platform.processor() or "Unknown CPU",
+            "cores": os.cpu_count() or 1,
         }
     elif _current_backend == Backend.ROCM:
         info = rocm_get_device_info(_current_device_id)
-        info['type'] = 'rocm'
+        info["type"] = "rocm"
         return info
     else:
-        return {'type': 'cerebras'}
+        return {"type": "cerebras"}
 
 
 def synchronize() -> None:
